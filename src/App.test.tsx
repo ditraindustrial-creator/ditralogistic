@@ -30,4 +30,12 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Entrar' }))
     expect(await screen.findByText('Hola, Pedro')).toBeInTheDocument()
   })
+
+  it('si usuarioActual falla muestra el login con un mensaje de error', async () => {
+    const repo = crearMemoryRepo()
+    repo.usuarioActual = () => Promise.reject(new Error('red caída'))
+    render(<App repo={repo} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos verificar tu sesión')
+    expect(screen.getByRole('button', { name: 'Entrar' })).toBeInTheDocument()
+  })
 })

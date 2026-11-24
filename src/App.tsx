@@ -13,10 +13,10 @@ const PANTALLAS: { id: Pantalla; titulo: string }[] = [
   { id: 'admin', titulo: 'Administración' },
 ]
 
-function Login({ repo, alIniciar }: { repo: Repo; alIniciar: (u: UsuarioActual) => void }) {
+function Login({ repo, alIniciar, errorInicial = '' }: { repo: Repo; alIniciar: (u: UsuarioActual) => void; errorInicial?: string }) {
   const [correo, setCorreo] = useState('')
   const [clave, setClave] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(errorInicial)
 
   async function enviar(e: FormEvent) {
     e.preventDefault()
@@ -50,15 +50,29 @@ export default function App({ repo }: { repo: Repo }) {
   const [cargando, setCargando] = useState(true)
   const [pantalla, setPantalla] = useState<Pantalla | null>(null)
 
+  const [errorSesion, setErrorSesion] = useState('')
+
   useEffect(() => {
-    repo.usuarioActual().then((u) => {
-      setUsuario(u)
-      setCargando(false)
-    })
+    let activo = true
+    repo
+      .usuarioActual()
+      .then((u) => {
+        if (!activo) return
+        setUsuario(u)
+        setCargando(false)
+      })
+      .catch(() => {
+        if (!activo) return
+        setErrorSesion('No pudimos verificar tu sesión. Revisa tu conexión e inicia sesión de nuevo.')
+        setCargando(false)
+      })
+    return () => {
+      activo = false
+    }
   }, [repo])
 
   if (cargando) return <p className="p-6">Cargando…</p>
-  if (!usuario) return <Login repo={repo} alIniciar={setUsuario} />
+  if (!usuario) return <Login repo={repo} alIniciar={setUsuario} errorInicial={errorSesion} />
 
   const permitidas = PANTALLAS.filter((p) => puedeVer(usuario.rol, p.id))
   const actual = permitidas.find((p) => p.id === pantalla)
