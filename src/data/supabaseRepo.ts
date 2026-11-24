@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Repo } from './repo'
-import type { Area, Cliente, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual } from '../dominio/tipos'
+import type { Area, Cliente, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual } from '../dominio/tipos'
 import { planificarClientes, planificarProductos } from '../dominio/maestros'
 import { ErrorTrabajo, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
 import { ErrorMovimiento, validarCantidad } from '../dominio/avance'
@@ -127,6 +127,34 @@ export function filaAProducto(f: FilaProducto): Producto {
   return { id: f.id, codigo: f.codigo, nombre: f.nombre, area: f.area as Area }
 }
 
+interface FilaLinea {
+  id: string
+  trabajo_id: string
+  producto: string
+  cantidad: number
+  nota: string | null
+}
+interface FilaEtapa {
+  id: string
+  area: string
+  orden: number
+  nombre: string
+  es_listo: boolean
+  es_final: boolean
+}
+
+const COLUMNAS_TRABAJO =
+  'id, numero, cliente_id, area, entrada, salida, recibido_en, guia_retiro, guia_despacho, factura, transporte, urgente, notas, foto_documento'
+
+export function filaALinea(f: FilaLinea): Linea {
+  const l: Linea = { id: f.id, trabajoId: f.trabajo_id, producto: f.producto, cantidad: f.cantidad }
+  if (f.nota) l.nota = f.nota
+  return l
+}
+export function filaAEtapa(f: FilaEtapa): Etapa {
+  return { id: f.id, area: f.area as Area, orden: f.orden, nombre: f.nombre, esListo: f.es_listo, esFinal: f.es_final }
+}
+
 /** Traduce un error de escritura de maestros a un mensaje en español. */
 export function errorDeMaestros(e: { code?: string; message: string }): Error {
   if (e.code === '42501') return new Error('No tienes permiso para modificar los maestros.')
@@ -219,6 +247,43 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
       })
       if (error) throw errorDeTrabajo(error)
       return filaATrabajo(data as FilaTrabajo)
+    },
+    async cargarTodo() {
+      try {
+        // Cada tabla grande se lee por páginas (PostgREST corta en 1000 filas), en paralelo.
+        const [trabajos, lineas, movimientos, etapas, clientes, recorridos] = await Promise.all([
+          leerTodas<FilaTrabajo>((d, h) => sb.from('trabajos').select(COLUMNAS_TRABAJO).order('id').range(d, h)),
+          leerTodas<FilaLinea>((d, h) => sb.from('lineas').select('id, trabajo_id, producto, cantidad, nota').order('id').range(d, h)),
+          leerTodas<FilaMovimiento>((d, h) =>
+            sb.from('movimientos').select('id, linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id, creado_en').order('id').range(d, h),
+          ),
+          leerTodas<FilaEtapa>((d, h) => sb.from('etapas').select('id, area, orden, nombre, es_listo, es_final').order('id').range(d, h)),
+          leerTodas<FilaCliente>((d, h) =>
+            sb.from('clientes').select('id, nombre, rut, contacto, direccion, recorrido_id').order('id').range(d, h),
+          ),
+          leerTodas<FilaRecorrido>((d, h) => sb.from('recorridos').select('id, nombre, dia, camioneta, lejano').order('id').range(d, h)),
+        ])
+        return {
+          trabajos: trabajos.map(filaATrabajo),
+          lineas: lineas.map(filaALinea),
+          movimientos: movimientos.map(filaAMovimiento),
+          etapas: etapas.map(filaAEtapa),
+          clientes: clientes.map(filaACliente),
+          recorridos: recorridos.map(filaARecorrido),
+        }
+      } catch {
+        throw new Error('No se pudo cargar la información. Revisa tu conexión.')
+      }
+    },
+    suscribirCambios(alCambiar) {
+      // Realtime: cualquier cambio en movimientos (y los trabajos nuevos, que traen su movimiento inicial).
+      const canal = sb
+        .channel(`cambios-${Math.random().toString(36).slice(2)}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'movimientos' }, () => alCambiar())
+        .subscribe()
+      return () => {
+        void sb.removeChannel(canal)
+      }
     },
     async listarClientes() {
       try {

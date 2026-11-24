@@ -36,6 +36,8 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
   const recorridos: Recorrido[] = (opciones.recorridos ?? []).map((r) => ({ ...r }))
   const productos: Producto[] = (opciones.productos ?? []).map((p) => ({ ...p }))
   let siguienteId = 1
+  const oyentes = new Set<() => void>()
+  const avisar = () => oyentes.forEach((f) => f())
 
   // Sin sesión se permite (fixtures de prueba); con sesión, igual que RLS: admin y gestión.
   function exigirGestion() {
@@ -81,6 +83,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
         creadoEn: new Date().toISOString(),
       }
       movimientos.push(mov)
+      avisar()
       return mov
     },
     // Mismas reglas que crear_trabajo en la base: validación completa antes de escribir, recepción
@@ -125,7 +128,24 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
           etapaOrigenId: null, etapaDestinoId: primera.id, usuarioId: actual.id, creadoEn,
         })
       }
+      avisar()
       return { ...trabajo }
+    },
+    async cargarTodo() {
+      return {
+        trabajos: trabajos.map((t) => ({ ...t })),
+        lineas: lineas.map((l) => ({ ...l })),
+        movimientos: movimientos.map((m) => ({ ...m })),
+        etapas: etapas.map((e) => ({ ...e })),
+        clientes: clientes.map((c) => ({ ...c })),
+        recorridos: recorridos.map((r) => ({ ...r })),
+      }
+    },
+    suscribirCambios(alCambiar) {
+      oyentes.add(alCambiar)
+      return () => {
+        oyentes.delete(alCambiar)
+      }
     },
     async listarClientes() {
       return clientes.map((c) => ({ ...c }))

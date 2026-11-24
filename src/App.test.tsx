@@ -54,3 +54,16 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Entrar' })).toBeInTheDocument()
   })
 })
+
+describe('App inicio', () => {
+  it('la pantalla de inicio muestra qué hay listo a quien puede verla, y al chofer no', async () => {
+    const admin = crearMemoryRepo({ usuario: { id: 'u2', nombre: 'Ana', rol: 'admin' } })
+    const { unmount } = render(<App repo={admin} />)
+    expect(await screen.findByRole('heading', { name: 'Qué hay listo' })).toBeInTheDocument()
+    expect(await screen.findByText(/No hay trabajos/)).toBeInTheDocument()
+    unmount()
+    render(<App repo={crearMemoryRepo({ usuario: { id: 'u1', nombre: 'Pedro', rol: 'chofer' } })} />)
+    expect(await screen.findByRole('button', { name: 'Hoja de ruta' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Qué hay listo' })).not.toBeInTheDocument()
+  })
+})

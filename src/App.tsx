@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { Repo } from './data/repo'
 import type { Pantalla, UsuarioActual } from './dominio/tipos'
 import { puedeVer } from './dominio/permisos'
+import Listo from './pantallas/listo/Listo'
 import Maestros from './pantallas/admin/Maestros'
 import Recepcion from './pantallas/recepcion/Recepcion'
 
@@ -108,12 +109,18 @@ export default function App({ repo }: { repo: Repo }) {
         </section>
       ) : (
         <nav aria-label="Menú" className="flex flex-col gap-3">
-          {permitidas.map((p) => (
+          {permitidas.filter((p) => p.id !== 'listo').map((p) => (
             <button key={p.id} onClick={() => setPantalla(p.id)} className="rounded bg-teal-700 p-5 text-left text-xl font-semibold text-white">
               {p.titulo}
             </button>
           ))}
         </nav>
+      )}
+      {!actual && puedeVer(usuario.rol, 'listo') && (
+        <section aria-label="Qué hay listo" className="mt-6">
+          <h1 className="mb-3 text-2xl font-bold">Qué hay listo</h1>
+          <Listo repo={repo} />
+        </section>
       )}
     </div>
   )

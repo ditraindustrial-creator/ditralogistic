@@ -1,5 +1,6 @@
 import type { Cliente, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual } from '../dominio/tipos'
 import type { DatosTrabajoNuevo } from '../dominio/trabajo'
+import type { DatosOperacion } from '../dominio/listo'
 import type { ClienteImportado, ProductoImportado } from '../dominio/csv'
 
 export interface ResultadoGuardado {
@@ -39,4 +40,12 @@ export interface Repo {
   listarProductos(): Promise<Producto[]>
   /** Crea o actualiza por código (idempotente). */
   guardarProductos(productos: ProductoImportado[]): Promise<ResultadoGuardado>
+
+  /** Todo lo que necesita `resumenListo`: trabajos, líneas, movimientos, etapas, clientes y recorridos. */
+  cargarTodo(): Promise<DatosOperacion>
+  /**
+   * Avisa (sin datos) cada vez que cambian los movimientos, para que la pantalla recargue.
+   * Devuelve la función que cancela la suscripción.
+   */
+  suscribirCambios(alCambiar: () => void): () => void
 }
