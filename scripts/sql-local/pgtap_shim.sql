@@ -1,4 +1,4 @@
--- Subconjunto mínimo de pgTAP (plan, ok, is, lives_ok, throws_ok, finish) para correr
+-- Subconjunto mínimo de pgTAP (plan, ok, is, lives_ok, throws_ok, skip, finish) para correr
 -- supabase/tests/*.test.sql con psql cuando pgTAP no está instalado.
 -- Cada aserción imprime "ok N - ..." o lanza una excepción (falla inmediata, psql sale con error).
 create function plan(n integer) returns text language plpgsql as $$
@@ -53,6 +53,18 @@ begin
     raise exception 'not ok % - % (error obtenido: % "%")', n, descr, sqlstate, sqlerrm;
   end;
   raise exception 'not ok % - % (no lanzó error)', n, descr;
+end $$;
+
+create function skip(why text, how_many integer) returns text language plpgsql as $$
+declare
+  lineas text[] := '{}';
+  n integer;
+begin
+  for i in 1..how_many loop
+    n := _shim_next();
+    lineas := lineas || format('ok %s # SKIP %s', n, why);
+  end loop;
+  return array_to_string(lineas, E'\n');
 end $$;
 
 create function finish() returns setof text language plpgsql as $$

@@ -1,14 +1,22 @@
 -- Pruebas de mover_unidades y del trigger movimientos_validar (migración 0002).
 -- Compatible con pgTAP (`supabase test db`, que lo corre con psql vía pg_prove) y con el
 -- shim de scripts/sql-local/pgtap_shim.sql (ver scripts/sql-local/correr_pruebas.sh).
--- La parte de concurrencia usa dblink: dos conexiones reales, A mantiene el bloqueo y B espera.
--- Cadena de conexión para dblink: setting pruebas.dblink_conn, o la base actual por defecto.
+--
+-- Concurrencia (pruebas 1-6): usa dblink para abrir dos conexiones reales; A mantiene el
+-- bloqueo de la línea y B espera. Cadena de conexión: setting `pruebas.dblink_conn`
+-- (p. ej. `set pruebas.dblink_conn = 'host=... user=... password=...'` o
+-- PGOPTIONS='-c pruebas.dblink_conn=...'); por defecto, la base actual sin contraseña.
+-- Si dblink no está disponible o no puede conectarse (p. ej. en Supabase, donde postgres no
+-- es superusuario y dblink exige contraseña), esas 6 pruebas se marcan SKIP y el resto corre.
+-- La prueba de concurrencia que siempre corre localmente es scripts/sql-local/carrera_mover_unidades.sh.
+--
+-- Los datos de concurrencia se confirman (otras conexiones deben verlos). Se borran antes de
+-- empezar, al terminar y también si algo falla a mitad (manejador de excepción).
 \set ON_ERROR_STOP 1
 \pset tuples_only on
 \pset format unaligned
 
 begin;
-create extension if not exists dblink \g /dev/null
 select plan(26);
 
 select id as taller from etapas where area = 'afilado' and nombre = 'En taller' \gset
@@ -19,91 +27,128 @@ select coalesce(nullif(current_setting('pruebas.dblink_conn', true), ''),
                 format('dbname=%s user=%s', current_database(), current_user)) as conn \gset
 
 -- ===================== Concurrencia (datos confirmados, visibles para otras conexiones) =====================
-select dblink_connect('prep', :'conn') \g /dev/null
-select dblink_exec('prep', $$
-  delete from movimientos where linea_id = 'b0000000-0000-0000-0000-0000000000c1';
-  delete from lineas where id = 'b0000000-0000-0000-0000-0000000000c1';
-  delete from trabajos where cliente_id = 'c0000000-0000-0000-0000-0000000000c1';
-  delete from clientes where id = 'c0000000-0000-0000-0000-0000000000c1';
-  delete from perfiles where usuario_id in ('a0000000-0000-0000-0000-0000000000c1','a0000000-0000-0000-0000-0000000000c2');
-  delete from auth.users where id in ('a0000000-0000-0000-0000-0000000000c1','a0000000-0000-0000-0000-0000000000c2');
-  insert into auth.users (id) values ('a0000000-0000-0000-0000-0000000000c1'), ('a0000000-0000-0000-0000-0000000000c2');
-  insert into perfiles values ('a0000000-0000-0000-0000-0000000000c1', 'Operario A', 'operario_afilado'),
-                              ('a0000000-0000-0000-0000-0000000000c2', 'Operario B', 'operario_afilado');
-  insert into clientes (id, nombre, rut) values ('c0000000-0000-0000-0000-0000000000c1', 'Cliente concurrencia', '1-9');
-  with t as (insert into trabajos (cliente_id, area, entrada, salida)
-             values ('c0000000-0000-0000-0000-0000000000c1', 'afilado', 'cliente', 'cliente') returning id)
-  insert into lineas (id, trabajo_id, producto, cantidad)
-    select 'b0000000-0000-0000-0000-0000000000c1', id, 'Cuchillo', 6 from t;
-  insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
-    select 'b0000000-0000-0000-0000-0000000000c1', 6, null, id, 'a0000000-0000-0000-0000-0000000000c1'
-      from etapas where area = 'afilado' and nombre = 'En taller';
-$$) \g /dev/null
+-- Abre la conexión 'prep' si se puede; nunca lanza error.
+create function pg_temp.dblink_disponible(p_conn text) returns boolean language plpgsql as $f$
+begin
+  begin
+    create extension if not exists dblink;
+    execute 'select dblink_connect(''prep'', $1)' using p_conn;
+    return true;
+  exception when others then
+    raise notice 'dblink no disponible (%): se omiten las pruebas de concurrencia', sqlerrm;
+    return false;
+  end;
+end $f$;
 
-select dblink_connect('a', :'conn') \g /dev/null
-select dblink_connect('b', :'conn') \g /dev/null
-select dblink_exec('a', 'set role authenticated') \g /dev/null
-select dblink_exec('a', $$set request.jwt.claims = '{"sub":"a0000000-0000-0000-0000-0000000000c1"}'$$) \g /dev/null
-select dblink_exec('b', 'set role authenticated') \g /dev/null
-select dblink_exec('b', $$set request.jwt.claims = '{"sub":"a0000000-0000-0000-0000-0000000000c2"}'$$) \g /dev/null
-select pid as bpid from dblink('b', 'select pg_backend_pid()') as t(pid int) \gset
+-- Cierra A y B (revierte sus transacciones abiertas), borra los datos de concurrencia y cierra 'prep'.
+create function pg_temp.cerrar_y_limpiar() returns void language plpgsql as $f$
+declare c text;
+begin
+  foreach c in array array['a', 'b'] loop
+    if c = any(coalesce(dblink_get_connections(), '{}')) then perform dblink_disconnect(c); end if;
+  end loop;
+  if 'prep' = any(coalesce(dblink_get_connections(), '{}')) then
+    perform dblink_exec('prep', $$
+      delete from movimientos where linea_id = 'b0000000-0000-0000-0000-0000000000c1';
+      delete from lineas where id = 'b0000000-0000-0000-0000-0000000000c1';
+      delete from trabajos where cliente_id = 'c0000000-0000-0000-0000-0000000000c1';
+      delete from clientes where id = 'c0000000-0000-0000-0000-0000000000c1';
+      delete from perfiles where usuario_id in ('a0000000-0000-0000-0000-0000000000c1','a0000000-0000-0000-0000-0000000000c2');
+      delete from auth.users where id in ('a0000000-0000-0000-0000-0000000000c1','a0000000-0000-0000-0000-0000000000c2');
+    $$);
+    perform dblink_disconnect('prep');
+  end if;
+end $f$;
 
--- A abre transacción, mueve 4 de 6 y NO confirma: mantiene el bloqueo de la línea.
-select dblink_exec('a', 'begin') \g /dev/null
-select is((select c from dblink('a', format(
-  'select cantidad from mover_unidades(%L, 4, %L, %L)',
-  'b0000000-0000-0000-0000-0000000000c1', :'taller', :'listo')) as t(c int)), 4,
-  'concurrencia: A mueve 4 de 6 dentro de su transacción abierta');
+create function pg_temp.concurrencia(p_conn text, p_taller uuid, p_listo uuid) returns setof text
+  language plpgsql as $f$
+declare
+  l constant uuid := 'b0000000-0000-0000-0000-0000000000c1';
+  bpid integer;
+  mover4 text := format('select cantidad from mover_unidades(%L, 4, %L, %L)', l, p_taller, p_listo);
+begin
+  begin
+    -- Limpieza previa por si una ejecución anterior se cortó, y datos de prueba.
+    perform dblink_exec('prep', $$
+      delete from movimientos where linea_id = 'b0000000-0000-0000-0000-0000000000c1';
+      delete from lineas where id = 'b0000000-0000-0000-0000-0000000000c1';
+      delete from trabajos where cliente_id = 'c0000000-0000-0000-0000-0000000000c1';
+      delete from clientes where id = 'c0000000-0000-0000-0000-0000000000c1';
+      delete from perfiles where usuario_id in ('a0000000-0000-0000-0000-0000000000c1','a0000000-0000-0000-0000-0000000000c2');
+      delete from auth.users where id in ('a0000000-0000-0000-0000-0000000000c1','a0000000-0000-0000-0000-0000000000c2');
+      insert into auth.users (id) values ('a0000000-0000-0000-0000-0000000000c1'), ('a0000000-0000-0000-0000-0000000000c2');
+      insert into perfiles values ('a0000000-0000-0000-0000-0000000000c1', 'Operario A', 'operario_afilado'),
+                                  ('a0000000-0000-0000-0000-0000000000c2', 'Operario B', 'operario_afilado');
+      insert into clientes (id, nombre, rut) values ('c0000000-0000-0000-0000-0000000000c1', 'Cliente concurrencia', '1-9');
+      with t as (insert into trabajos (cliente_id, area, entrada, salida)
+                 values ('c0000000-0000-0000-0000-0000000000c1', 'afilado', 'cliente', 'cliente') returning id)
+      insert into lineas (id, trabajo_id, producto, cantidad)
+        select 'b0000000-0000-0000-0000-0000000000c1', id, 'Cuchillo', 6 from t;
+      insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
+        select 'b0000000-0000-0000-0000-0000000000c1', 6, null, id, 'a0000000-0000-0000-0000-0000000000c1'
+          from etapas where area = 'afilado' and nombre = 'En taller';
+    $$);
 
--- B, en otra conexión y al mismo tiempo, intenta mover 4: debe quedar esperando el bloqueo.
-select dblink_send_query('b', format(
-  'select cantidad from mover_unidades(%L, 4, %L, %L)',
-  'b0000000-0000-0000-0000-0000000000c1', :'taller', :'listo')) \g /dev/null
-select pg_sleep(0.5) \g /dev/null
-select pg_stat_clear_snapshot() \g /dev/null
-select ok(dblink_is_busy('b') = 1
-          and exists (select 1 from pg_stat_activity where pid = :bpid and wait_event_type = 'Lock'),
-  'concurrencia: B queda esperando el bloqueo de la línea que tiene A');
+    perform dblink_connect('a', p_conn);
+    perform dblink_connect('b', p_conn);
+    perform dblink_exec('a', 'set role authenticated');
+    perform dblink_exec('a', $$set request.jwt.claims = '{"sub":"a0000000-0000-0000-0000-0000000000c1"}'$$);
+    perform dblink_exec('b', 'set role authenticated');
+    perform dblink_exec('b', $$set request.jwt.claims = '{"sub":"a0000000-0000-0000-0000-0000000000c2"}'$$);
+    select pid into bpid from dblink('b', 'select pg_backend_pid()') as t(pid int);
 
-select dblink_exec('a', 'commit') \g /dev/null
-select is((select count(*) from dblink_get_result('b', false) as t(c int)), 0::bigint,
-  'concurrencia: B no obtiene movimiento');
-select ok(dblink_error_message('b') like '%Solo hay 2 unidades en esta etapa; no se pueden mover 4.%',
-  'concurrencia: al liberarse el bloqueo B ve las 2 restantes y falla con mensaje claro');
-select count(*) from dblink_get_result('b', false) as t(c int) \g /dev/null
+    -- A abre transacción, mueve 4 de 6 y NO confirma: mantiene el bloqueo de la línea.
+    perform dblink_exec('a', 'begin');
+    return next is((select c from dblink('a', mover4) as t(c int)), 4,
+      'concurrencia: A mueve 4 de 6 dentro de su transacción abierta');
 
--- B ahora mueve las 2 que quedan mientras A vuelve a tomar el bloqueo e intenta mover 1.
-select dblink_exec('b', 'begin') \g /dev/null
-select count(*) from dblink('b', format('select cantidad from mover_unidades(%L, 2, %L, %L)',
-  'b0000000-0000-0000-0000-0000000000c1', :'taller', :'listo')) as t(c int) \g /dev/null
-select dblink_send_query('a', format(
-  'select cantidad from mover_unidades(%L, 1, %L, %L)',
-  'b0000000-0000-0000-0000-0000000000c1', :'taller', :'listo')) \g /dev/null
-select pg_sleep(0.3) \g /dev/null
-select dblink_exec('b', 'commit') \g /dev/null
-select is((select count(*) from dblink_get_result('a', false) as t(c int)), 0::bigint,
-  'concurrencia: A no puede mover la unidad que B ya se llevó');
-select count(*) from dblink_get_result('a', false) as t(c int) \g /dev/null
+    -- B, en otra conexión y al mismo tiempo, intenta mover 4: debe quedar esperando el bloqueo.
+    perform dblink_send_query('b', mover4);
+    perform pg_sleep(0.5);
+    perform pg_stat_clear_snapshot();
+    return next ok(dblink_is_busy('b') = 1
+              and exists (select 1 from pg_stat_activity where pid = bpid and wait_event_type = 'Lock'),
+      'concurrencia: B queda esperando el bloqueo de la línea que tiene A');
 
-select is((select array_agg(n order by n) from dblink('prep', format(
-  $q$select coalesce(sum(case when etapa_destino_id = e.id then cantidad else 0 end), 0)
-          - coalesce(sum(case when etapa_origen_id = e.id then cantidad else 0 end), 0)
-       from etapas e left join movimientos m on m.linea_id = %L and e.id in (m.etapa_origen_id, m.etapa_destino_id)
-      where e.area = 'afilado' group by e.id$q$, 'b0000000-0000-0000-0000-0000000000c1')) as t(n int)),
-  array[0, 0, 0, 0, 6],
-  'concurrencia: ninguna etapa negativa y el total sigue siendo 6 (6 en Listo)');
+    perform dblink_exec('a', 'commit');
+    return next is((select count(*) from dblink_get_result('b', false) as t(c int)), 0::bigint,
+      'concurrencia: B no obtiene movimiento');
+    return next ok(dblink_error_message('b') like '%Solo hay 2 unidades en esta etapa; no se pueden mover 4.%',
+      'concurrencia: al liberarse el bloqueo B ve las 2 restantes y falla con mensaje claro');
+    perform count(*) from dblink_get_result('b', false) as t(c int);
 
-select dblink_exec('prep', $$
-  delete from movimientos where linea_id = 'b0000000-0000-0000-0000-0000000000c1';
-  delete from lineas where id = 'b0000000-0000-0000-0000-0000000000c1';
-  delete from trabajos where cliente_id = 'c0000000-0000-0000-0000-0000000000c1';
-  delete from clientes where id = 'c0000000-0000-0000-0000-0000000000c1';
-  delete from perfiles where usuario_id in ('a0000000-0000-0000-0000-0000000000c1','a0000000-0000-0000-0000-0000000000c2');
-  delete from auth.users where id in ('a0000000-0000-0000-0000-0000000000c1','a0000000-0000-0000-0000-0000000000c2');
-$$) \g /dev/null
-select dblink_disconnect('a') \g /dev/null
-select dblink_disconnect('b') \g /dev/null
-select dblink_disconnect('prep') \g /dev/null
+    -- B ahora mueve las 2 que quedan mientras A vuelve a tomar el bloqueo e intenta mover 1.
+    perform dblink_exec('b', 'begin');
+    perform count(*) from dblink('b', format('select cantidad from mover_unidades(%L, 2, %L, %L)',
+      l, p_taller, p_listo)) as t(c int);
+    perform dblink_send_query('a', format('select cantidad from mover_unidades(%L, 1, %L, %L)',
+      l, p_taller, p_listo));
+    perform pg_sleep(0.3);
+    perform dblink_exec('b', 'commit');
+    return next is((select count(*) from dblink_get_result('a', false) as t(c int)), 0::bigint,
+      'concurrencia: A no puede mover la unidad que B ya se llevó');
+    perform count(*) from dblink_get_result('a', false) as t(c int);
+
+    return next is((select array_agg(n order by n) from dblink('prep', format(
+      $q$select coalesce(sum(case when etapa_destino_id = e.id then cantidad else 0 end), 0)
+              - coalesce(sum(case when etapa_origen_id = e.id then cantidad else 0 end), 0)
+           from etapas e left join movimientos m on m.linea_id = %L and e.id in (m.etapa_origen_id, m.etapa_destino_id)
+          where e.area = 'afilado' group by e.id$q$, l)) as t(n int)),
+      array[0, 0, 0, 0, 6],
+      'concurrencia: ninguna etapa negativa y el total sigue siendo 6 (6 en Listo)');
+  exception when others then
+    perform pg_temp.cerrar_y_limpiar();
+    raise;
+  end;
+  perform pg_temp.cerrar_y_limpiar();
+end $f$;
+
+select pg_temp.dblink_disponible(:'conn') as dblink_ok \gset
+\if :dblink_ok
+select * from pg_temp.concurrencia(:'conn', :'taller', :'listo');
+\else
+select skip('dblink no disponible o sin conexión; la concurrencia se prueba con scripts/sql-local/carrera_mover_unidades.sh', 6);
+\endif
 
 -- ===================== Reglas (dentro de esta transacción, se revierte al final) =====================
 insert into auth.users (id) values
