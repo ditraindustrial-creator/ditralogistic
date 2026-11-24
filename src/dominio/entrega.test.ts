@@ -5,6 +5,8 @@ import {
   planificarEntrega,
   validarFotoDocumento,
   nombreFotoDocumento,
+  unidadesListasPorLinea,
+  lineasEntregables,
   type DatosEntrega,
 } from './entrega'
 import type { Etapa, Linea, Movimiento, Trabajo } from './tipos'
@@ -131,13 +133,23 @@ describe('agregarDocumento', () => {
   })
 })
 
+const TIPO_NO_VALIDO = 'La foto debe ser JPG, PNG, WebP o HEIC.'
+
 describe('foto del documento', () => {
   it('acepta imágenes de hasta 8 MB', () => {
     expect(() => validarFotoDocumento({ type: 'image/jpeg', size: 8 * 1024 * 1024 })).not.toThrow()
   })
+  it('acepta solo jpeg, png, webp y heic (sin SVG ni otros formatos)', () => {
+    for (const type of ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'IMAGE/JPEG']) {
+      expect(() => validarFotoDocumento({ type, size: 10 })).not.toThrow()
+    }
+    for (const type of ['image/svg+xml', 'image/gif', 'image/tiff', 'image/*', 'image/jpeg2', 'text/html', 'image/png; charset=x']) {
+      expect(error(() => validarFotoDocumento({ type, size: 10 }))).toBe(TIPO_NO_VALIDO)
+    }
+  })
   it('rechaza lo que no es imagen, archivos vacíos y los de más de 8 MB', () => {
-    expect(error(() => validarFotoDocumento({ type: 'application/pdf', size: 10 }))).toBe('La foto debe ser una imagen.')
-    expect(error(() => validarFotoDocumento({ type: '', size: 10 }))).toBe('La foto debe ser una imagen.')
+    expect(error(() => validarFotoDocumento({ type: 'application/pdf', size: 10 }))).toBe(TIPO_NO_VALIDO)
+    expect(error(() => validarFotoDocumento({ type: '', size: 10 }))).toBe(TIPO_NO_VALIDO)
     expect(error(() => validarFotoDocumento({ type: 'image/png', size: 0 }))).toBe('El archivo de la foto está vacío.')
     expect(error(() => validarFotoDocumento({ type: 'image/png', size: 8 * 1024 * 1024 + 1 }))).toBe(
       'La foto puede pesar hasta 8 MB.',
@@ -148,5 +160,59 @@ describe('foto del documento', () => {
     expect(nombreFotoDocumento('t1', 'image/png', 'x')).toBe('t1/x.png')
     expect(nombreFotoDocumento('t1', 'image/svg+xml', 'x')).toBe('t1/x.svgxml')
     expect(nombreFotoDocumento('t1', 'image/', 'x')).toBe('t1/x.img')
+  })
+})
+
+describe('unidadesListasPorLinea', () => {
+  const etapas: Etapa[] = [
+    { id: 'e1', area: 'afilado', orden: 1, nombre: 'Recibido', esListo: false, esFinal: false },
+    { id: 'e2', area: 'afilado', orden: 2, nombre: 'Listo', esListo: true, esFinal: false },
+    { id: 'e3', area: 'afilado', orden: 3, nombre: 'Entregado', esListo: false, esFinal: true },
+  ]
+  const m = (id: string, lineaId: string, cantidad: number, o: string | null, d: string): Movimiento => ({
+    id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn: '2026-11-20T12:00:00Z',
+  })
+  const datos = {
+    trabajos: [{ id: 't1', numero: 1, clienteId: 'c', area: 'afilado', entrada: 'cliente', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z', urgente: false }] as Trabajo[],
+    lineas: [
+      { id: 'l1', trabajoId: 't1', producto: 'Cuchillo', cantidad: 6 },
+      { id: 'l2', trabajoId: 't1', producto: 'Tijera', cantidad: 2 },
+    ],
+    etapas,
+    movimientos: [m('1', 'l1', 6, null, 'e1'), m('2', 'l1', 4, 'e1', 'e2'), m('3', 'l1', 1, 'e2', 'e3'), m('4', 'l2', 2, null, 'e1')],
+  }
+  it('cuenta solo las unidades que están hoy en una etapa listo, por línea, y omite las líneas sin listas', () => {
+    expect(unidadesListasPorLinea(datos, 't1')).toEqual([{ lineaId: 'l1', producto: 'Cuchillo', listas: 3 }])
+  })
+  it('un trabajo desconocido no tiene líneas', () => {
+    expect(unidadesListasPorLinea(datos, 'zz')).toEqual([])
+  })
+})
+
+describe('lineasEntregables', () => {
+  const etapas: Etapa[] = [
+    { id: 'e1', area: 'afilado', orden: 1, nombre: 'Recibido', esListo: false, esFinal: false },
+    { id: 'e2', area: 'afilado', orden: 2, nombre: 'Listo', esListo: true, esFinal: false },
+    { id: 'e3', area: 'afilado', orden: 3, nombre: 'Entregado', esListo: false, esFinal: true },
+  ]
+  const t = (id: string, numero: number): Trabajo => ({ id, numero, clienteId: 'c', area: 'afilado', entrada: 'cliente', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z', urgente: false })
+  const m = (id: string, lineaId: string, cantidad: number, o: string | null, d: string): Movimiento => ({
+    id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn: '2026-11-20T12:00:00Z',
+  })
+  it('junta las líneas con unidades listas de varios trabajos, con su número, en el orden pedido', () => {
+    const datos = {
+      trabajos: [t('t1', 11), t('t2', 12)],
+      lineas: [
+        { id: 'l1', trabajoId: 't1', producto: 'Cuchillo', cantidad: 4 },
+        { id: 'l2', trabajoId: 't2', producto: 'Tijera', cantidad: 2 },
+        { id: 'l3', trabajoId: 't2', producto: 'Sierra', cantidad: 2 },
+      ],
+      etapas,
+      movimientos: [m('1', 'l1', 4, null, 'e2'), m('2', 'l2', 2, null, 'e2'), m('3', 'l3', 2, null, 'e1')],
+    }
+    expect(lineasEntregables(datos, ['t2', 't1'])).toEqual([
+      { lineaId: 'l2', trabajoId: 't2', numero: 12, producto: 'Tijera', listas: 2 },
+      { lineaId: 'l1', trabajoId: 't1', numero: 11, producto: 'Cuchillo', listas: 4 },
+    ])
   })
 })

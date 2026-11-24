@@ -254,9 +254,11 @@ function errorDeFoto(e: { message: string; statusCode?: string }): Error {
     return new ErrorEntrega('No tienes permiso para subir la foto del documento.')
   }
   if (e.statusCode === '413' || /too large|maximum allowed size/i.test(m)) return new ErrorEntrega('La foto puede pesar hasta 8 MB.')
-  if (/mime type/i.test(m)) return new ErrorEntrega('La foto debe ser una imagen.')
+  if (/mime type/i.test(m)) return new ErrorEntrega('La foto debe ser JPG, PNG, WebP o HEIC.')
   return new Error('No se pudo subir la foto. Revisa tu conexión e inténtalo de nuevo.')
 }
+
+const SEGUNDOS_URL_FOTO = 300
 
 /** Identificador único para el nombre del archivo (crypto.randomUUID solo existe en contextos seguros). */
 function idUnico(): string {
@@ -431,6 +433,18 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
         throw new ErrorEntrega('No se pudo asociar la foto al trabajo (el trabajo no existe o no tienes permiso).')
       }
       return ruta
+    },
+    async urlFotoDocumento(ruta) {
+      const { data, error } = await sb.storage.from('documentos').createSignedUrl(ruta, SEGUNDOS_URL_FOTO)
+      if (error || !data?.signedUrl) {
+        const e = (error ?? { message: '' }) as { message: string; statusCode?: string }
+        if (e.statusCode === '403' || e.statusCode === '401' || /row-level security|unauthorized|not allowed/i.test(e.message)) {
+          throw new ErrorEntrega('No tienes permiso para ver la foto del documento.')
+        }
+        if (e.statusCode === '404' || /not found/i.test(e.message)) throw new ErrorEntrega('No se encontró la foto del documento.')
+        throw new Error('No se pudo abrir la foto. Revisa tu conexión e inténtalo de nuevo.')
+      }
+      return data.signedUrl
     },
     async listarClientes() {
       try {

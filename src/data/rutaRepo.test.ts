@@ -189,11 +189,27 @@ describe('memoryRepo.subirFotoDocumento', () => {
   })
   it('rechaza lo que no es imagen o pesa más de 8 MB, trabajos inexistentes y roles sin permiso', async () => {
     const { r } = repo()
-    await expect(r.subirFotoDocumento('t1', foto('application/pdf'))).rejects.toThrow('La foto debe ser una imagen.')
+    await expect(r.subirFotoDocumento('t1', foto('application/pdf'))).rejects.toThrow('La foto debe ser JPG, PNG, WebP o HEIC.')
     await expect(r.subirFotoDocumento('t1', foto('image/png', 8 * 1024 * 1024 + 1))).rejects.toThrow('La foto puede pesar hasta 8 MB.')
     await expect(r.subirFotoDocumento('zz', foto())).rejects.toThrow('El trabajo no existe.')
     await expect(repo('operario_afilado').r.subirFotoDocumento('t1', foto())).rejects.toThrow(
       'No tienes permiso para subir la foto del documento.',
     )
+  })
+})
+
+describe('memoryRepo.urlFotoDocumento', () => {
+  it('devuelve una URL para abrir la foto subida', async () => {
+    const { r } = repo()
+    const ruta = await r.subirFotoDocumento('t1', new File([new Uint8Array([1, 2, 3])], 'a.jpg', { type: 'image/jpeg' }))
+    const url = await r.urlFotoDocumento(ruta)
+    expect(url).toMatch(/^(blob:|data:)/)
+  })
+  it('una ruta que no existe, o un rol sin permiso, da un error en español', async () => {
+    const { r } = repo()
+    await expect(r.urlFotoDocumento('t1/nada.jpg')).rejects.toThrow('No se encontró la foto del documento.')
+    const ruta = await r.subirFotoDocumento('t1', new File([new Uint8Array([1])], 'a.png', { type: 'image/png' }))
+    const op = repo('operario_afilado').r
+    await expect(op.urlFotoDocumento(ruta)).rejects.toThrow('No tienes permiso para ver la foto del documento.')
   })
 })

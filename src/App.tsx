@@ -5,6 +5,8 @@ import { puedeVer } from './dominio/permisos'
 import Listo from './pantallas/listo/Listo'
 import Maestros from './pantallas/admin/Maestros'
 import Recepcion from './pantallas/recepcion/Recepcion'
+import HojaChofer from './pantallas/ruta/HojaChofer'
+import RutaManana from './pantallas/ruta/RutaManana'
 import Taller from './pantallas/taller/Taller'
 
 const PANTALLAS: { id: Pantalla; titulo: string }[] = [
@@ -78,7 +80,10 @@ export default function App({ repo }: { repo: Repo }) {
   if (cargando) return <p className="p-6">Cargando…</p>
   if (!usuario) return <Login repo={repo} alIniciar={setUsuario} errorInicial={errorSesion} />
 
-  const permitidas = PANTALLAS.filter((p) => puedeVer(usuario.rol, p.id))
+  // La hoja de ruta es el inicio del chofer: va primera en su menú.
+  const permitidas = PANTALLAS.filter((p) => puedeVer(usuario.rol, p.id)).sort(
+    (a, b) => Number(usuario.rol === 'chofer' && b.id === 'hoja_chofer') - Number(usuario.rol === 'chofer' && a.id === 'hoja_chofer'),
+  )
   const actual = permitidas.find((p) => p.id === pantalla)
 
   return (
@@ -106,6 +111,10 @@ export default function App({ repo }: { repo: Repo }) {
             <div className="mt-4"><Recepcion repo={repo} usuario={usuario} /></div>
           ) : actual.id === 'taller' ? (
             <div className="mt-4"><Taller repo={repo} usuario={usuario} /></div>
+          ) : actual.id === 'ruta' ? (
+            <div className="mt-4"><RutaManana repo={repo} usuario={usuario} /></div>
+          ) : actual.id === 'hoja_chofer' ? (
+            <div className="mt-4"><HojaChofer repo={repo} usuario={usuario} /></div>
           ) : (
             <p className="mt-2 text-slate-600">Próximamente.</p>
           )}

@@ -14,7 +14,7 @@ const etapas: Etapa[] = [
 const secretaria: UsuarioActual = { id: 'u1', nombre: 'Sec', rol: 'secretaria' }
 const chofer: UsuarioActual = { id: 'u2', nombre: 'Pedro', rol: 'chofer' }
 
-function montar(usuario: UsuarioActual = secretaria, envolver?: (r: Repo) => Repo) {
+function montar(usuario: UsuarioActual = secretaria, envolver?: (r: Repo) => Repo, props: Partial<Parameters<typeof Recepcion>[0]> = {}) {
   const trabajos: Trabajo[] = []
   const lineas: Linea[] = []
   const base = crearMemoryRepo({
@@ -29,7 +29,7 @@ function montar(usuario: UsuarioActual = secretaria, envolver?: (r: Repo) => Rep
     ],
   })
   const repo = envolver ? envolver(base) : base
-  render(<Recepcion repo={repo} usuario={usuario} />)
+  render(<Recepcion repo={repo} usuario={usuario} {...props} />)
   return { repo, trabajos, lineas }
 }
 
@@ -183,5 +183,39 @@ describe('Recepcion', () => {
     const repo = { ...crearMemoryRepo({ usuario: secretaria }), listarClientes: () => Promise.reject(new Error('boom')) }
     render(<Recepcion repo={repo} usuario={secretaria} />)
     expect(await screen.findByText('No se pudieron cargar los clientes. Revisa tu conexión.')).toBeInTheDocument()
+  })
+
+  describe('dentro de la hoja del chofer (clienteInicial y onCreado)', () => {
+    const cliente = { id: 'c1', nombre: 'Imprenta Sur Ltda.', rut: '76123456-7', recorridoId: null }
+
+    it('arranca con el cliente elegido y la modalidad ruta propia, también para gestión', async () => {
+      montar(secretaria, undefined, { clienteInicial: cliente })
+      expect(await screen.findByText('Imprenta Sur Ltda.')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Cliente')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Ruta propia (retiro)')).toBeChecked()
+    })
+
+    it('guarda con entrada ruta_propia y avisa con onCreado una sola vez', async () => {
+      const espiar = vi.fn()
+      const onCreado = vi.fn()
+      montar(secretaria, (r) => ({ ...r, crearTrabajo: (d) => { espiar(d); return r.crearTrabajo(d) } }), { clienteInicial: cliente, onCreado })
+      await userEvent.type(screen.getByLabelText('Producto línea 1'), 'Cuchillo 20 cm')
+      await userEvent.type(screen.getByLabelText('Cantidad línea 1'), '3')
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
+      expect(await screen.findByText(/Trabajo N\.º \d+ guardado/)).toBeInTheDocument()
+      expect(espiar).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 'c1', entrada: 'ruta_propia' }))
+      expect(onCreado).toHaveBeenCalledTimes(1)
+      expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 'c1', entrada: 'ruta_propia' }))
+    })
+
+    it('"Recibir otro trabajo" vuelve al mismo cliente', async () => {
+      montar(secretaria, undefined, { clienteInicial: cliente })
+      await userEvent.type(screen.getByLabelText('Producto línea 1'), 'Cuchillo 20 cm')
+      await userEvent.type(screen.getByLabelText('Cantidad línea 1'), '3')
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
+      await userEvent.click(await screen.findByRole('button', { name: 'Recibir otro trabajo' }))
+      expect(screen.getByText('Imprenta Sur Ltda.')).toBeInTheDocument()
+      expect(screen.getByLabelText('Ruta propia (retiro)')).toBeChecked()
+    })
   })
 })

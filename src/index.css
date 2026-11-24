@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+/* Hoja de ruta impresa: texto negro sobre blanco, sin sombras; los controles llevan `print:hidden`. */
+@media print {
+  body { background: #fff; color: #000; }
+  header, nav { display: none; }
+}

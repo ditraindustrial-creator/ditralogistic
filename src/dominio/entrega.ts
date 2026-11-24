@@ -117,11 +117,55 @@ export function planificarEntrega(datos: DatosEntrega, entregas: Entrega[], docu
   return plan
 }
 
-/** Lanza ErrorEntrega si el archivo no sirve como foto del documento firmado (imagen, hasta 8 MB). */
+/** Tipos de imagen aceptados para la foto (sin SVG: puede llevar scripts). Igual que el bucket `documentos` (0008). */
+export const TIPOS_FOTO_DOCUMENTO: readonly string[] = ['image/jpeg', 'image/png', 'image/webp', 'image/heic']
+
+/** Lanza ErrorEntrega si el archivo no sirve como foto del documento firmado (JPG, PNG, WebP o HEIC, hasta 8 MB). */
 export function validarFotoDocumento(archivo: { type: string; size: number }): void {
-  if (!/^image\//.test(archivo.type ?? '')) throw new ErrorEntrega('La foto debe ser una imagen.')
+  if (!TIPOS_FOTO_DOCUMENTO.includes((archivo.type ?? '').toLowerCase())) {
+    throw new ErrorEntrega('La foto debe ser JPG, PNG, WebP o HEIC.')
+  }
   if (!(archivo.size > 0)) throw new ErrorEntrega('El archivo de la foto está vacío.')
   if (archivo.size > FOTO_MAXIMA_BYTES) throw new ErrorEntrega('La foto puede pesar hasta 8 MB.')
+}
+
+/**
+ * Unidades listas por línea de un trabajo (hoy, en etapas "listo"), solo las líneas con algo listo.
+ * Es lo que la pantalla ofrece entregar: el tope de cada línea coincide con el que exige la base.
+ */
+export function unidadesListasPorLinea(
+  datos: DatosEntrega,
+  trabajoId: string,
+): { lineaId: string; producto: string; listas: number }[] {
+  const trabajo = datos.trabajos.find((t) => t.id === trabajoId)
+  if (!trabajo) return []
+  const listo = new Set(datos.etapas.filter((e) => e.area === trabajo.area && e.esListo).map((e) => e.id))
+  const salida: { lineaId: string; producto: string; listas: number }[] = []
+  for (const l of datos.lineas.filter((x) => x.trabajoId === trabajoId)) {
+    const dist = distribucionPorEtapa(datos.movimientos.filter((m) => m.lineaId === l.id))
+    let listas = 0
+    for (const [etapaId, n] of dist) if (listo.has(etapaId) && n > 0) listas += n
+    if (listas > 0) salida.push({ lineaId: l.id, producto: l.producto, listas })
+  }
+  return salida
+}
+
+/** Una línea que se puede entregar ahora: cuántas unidades están listas. */
+export interface LineaEntregable {
+  lineaId: string
+  trabajoId: string
+  numero: number
+  producto: string
+  listas: number
+}
+
+/** Líneas entregables de varios trabajos (en el orden dado), con el número de trabajo para mostrarlas. */
+export function lineasEntregables(datos: DatosEntrega, trabajoIds: string[]): LineaEntregable[] {
+  return trabajoIds.flatMap((trabajoId) => {
+    const numero = datos.trabajos.find((t) => t.id === trabajoId)?.numero
+    if (numero === undefined) return []
+    return unidadesListasPorLinea(datos, trabajoId).map((l) => ({ ...l, trabajoId, numero }))
+  })
 }
 
 /**

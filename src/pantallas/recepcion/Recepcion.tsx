@@ -60,8 +60,17 @@ function Opciones<T extends string>({
   )
 }
 
-export default function Recepcion({ repo, usuario }: { repo: Repo; usuario: UsuarioActual }) {
-  const modalidadInicial: Modalidad = usuario.rol === 'chofer' ? 'ruta_propia' : 'cliente'
+export default function Recepcion({
+  repo, usuario, clienteInicial, onCreado,
+}: {
+  repo: Repo
+  usuario: UsuarioActual
+  /** Cliente ya elegido (p. ej. la parada de la hoja del chofer); trae la modalidad ruta propia. */
+  clienteInicial?: Cliente
+  /** Se llama una vez guardado el trabajo. */
+  onCreado?: (trabajo: Trabajo) => void
+}) {
+  const modalidadInicial: Modalidad = usuario.rol === 'chofer' || clienteInicial ? 'ruta_propia' : 'cliente'
   const siguienteClave = useRef(2)
   const enCurso = useRef(false)
 
@@ -69,7 +78,7 @@ export default function Recepcion({ repo, usuario }: { repo: Repo; usuario: Usua
   const [productos, setProductos] = useState<Producto[]>([])
   const [errorCarga, setErrorCarga] = useState('')
 
-  const [cliente, setCliente] = useState<Cliente | null>(null)
+  const [cliente, setCliente] = useState<Cliente | null>(clienteInicial ?? null)
   const [busqueda, setBusqueda] = useState('')
   const [area, setArea] = useState<Area>('afilado')
   const [entrada, setEntrada] = useState<Modalidad>(modalidadInicial)
@@ -103,7 +112,7 @@ export default function Recepcion({ repo, usuario }: { repo: Repo; usuario: Usua
   }
 
   function limpiar() {
-    setCliente(null)
+    setCliente(clienteInicial ?? null)
     setBusqueda('')
     setArea('afilado')
     setEntrada(modalidadInicial)
@@ -135,7 +144,9 @@ export default function Recepcion({ repo, usuario }: { repo: Repo; usuario: Usua
     enCurso.current = true
     setGuardando(true)
     try {
-      setGuardado(await repo.crearTrabajo(datos))
+      const creado = await repo.crearTrabajo(datos)
+      setGuardado(creado)
+      onCreado?.(creado)
     } catch (e) {
       // Solo se muestran tal cual los errores de regla (ya en español); lo demás es técnico.
       setErrores([e instanceof ErrorTrabajo ? e.message : ERROR_GENERICO])

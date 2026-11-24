@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { diaLocal, diaSemana } from './fechas'
+import { diaLocal, diaSemana, siguienteDiaHabil } from './fechas'
 
 describe('diaLocal', () => {
   it('verano de Chile (UTC-3): 02:30Z del 25 aún es 24', () => {
@@ -31,5 +31,26 @@ describe('diaSemana', () => {
     expect(diaSemana('2026-11-23')).toBe(1)
     expect(diaSemana('2026-11-29')).toBe(7)
     expect(diaSemana('2026-11-28')).toBe(6)
+  })
+})
+
+describe('siguienteDiaHabil', () => {
+  it('después de un día de semana (lunes a jueves) es el día siguiente', () => {
+    expect(siguienteDiaHabil('2026-11-23')).toBe('2026-11-24') // lunes -> martes
+    expect(siguienteDiaHabil('2026-11-24')).toBe('2026-11-25')
+    expect(siguienteDiaHabil('2026-11-26')).toBe('2026-11-27') // jueves -> viernes
+  })
+  it('viernes, sábado y domingo apuntan al lunes', () => {
+    expect(siguienteDiaHabil('2026-11-27')).toBe('2026-11-30') // viernes
+    expect(siguienteDiaHabil('2026-11-28')).toBe('2026-11-30') // sábado
+    expect(siguienteDiaHabil('2026-11-29')).toBe('2026-11-30') // domingo
+  })
+  it('cruza fin de mes y de año', () => {
+    expect(siguienteDiaHabil('2026-12-31')).toBe('2027-01-01') // jueves
+    expect(siguienteDiaHabil('2027-01-01')).toBe('2027-01-04') // viernes
+    expect(siguienteDiaHabil('2026-02-27')).toBe('2026-03-02')
+  })
+  it('rechaza fechas inválidas', () => {
+    expect(() => siguienteDiaHabil('mañana')).toThrow('Fecha inválida')
   })
 })

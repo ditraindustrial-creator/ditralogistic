@@ -14,6 +14,25 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: 'Reporte diario' })).not.toBeInTheDocument()
   })
 
+  it('la hoja de ruta es lo primero del menú del chofer y se abre sin títulos repetidos', async () => {
+    const repo = crearMemoryRepo({ usuario: { id: 'u1', nombre: 'Pedro', rol: 'chofer' } })
+    render(<App repo={repo} />)
+    const botones = (await screen.findAllByRole('button')).map((b) => b.textContent)
+    expect(botones.indexOf('Hoja de ruta')).toBeLessThan(botones.indexOf('Recepción'))
+    await userEvent.click(screen.getByRole('button', { name: 'Hoja de ruta' }))
+    expect(await screen.findByLabelText('Fecha')).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: 'Hoja de ruta' })).toHaveLength(1)
+  })
+
+  it('la secretaria abre la ruta de mañana, con un solo título', async () => {
+    const repo = crearMemoryRepo({ usuario: { id: 'u3', nombre: 'Sofía', rol: 'secretaria' } })
+    render(<App repo={repo} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Ruta de mañana' }))
+    expect(await screen.findByRole('button', { name: 'Agregar visita extra' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: 'Ruta de mañana' })).toHaveLength(1)
+    expect(screen.queryByText('Próximamente.')).not.toBeInTheDocument()
+  })
+
   it('el admin ve Administración', async () => {
     const repo = crearMemoryRepo({ usuario: { id: 'u2', nombre: 'Ana', rol: 'admin' } })
     render(<App repo={repo} />)

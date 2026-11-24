@@ -18,3 +18,16 @@ export function diaSemana(fecha: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay()
   return (d === 0 ? 7 : d) as 1 | 2 | 3 | 4 | 5 | 6 | 7
 }
+
+/**
+ * Próximo día hábil (lunes a viernes) después de una fecha `YYYY-MM-DD`: el día siguiente, o el
+ * lunes si la fecha es viernes, sábado o domingo. Es la fecha por defecto de la ruta de mañana.
+ */
+export function siguienteDiaHabil(fecha: string): string {
+  const dia = diaSemana(fecha) // valida el formato
+  const salto = dia === 5 ? 3 : dia === 6 ? 2 : 1
+  const [a, m, d] = fecha.split('-').map(Number)
+  const s = new Date(Date.UTC(a, m - 1, d + salto))
+  const dos = (n: number) => String(n).padStart(2, '0')
+  return `${s.getUTCFullYear()}-${dos(s.getUTCMonth() + 1)}-${dos(s.getUTCDate())}`
+}

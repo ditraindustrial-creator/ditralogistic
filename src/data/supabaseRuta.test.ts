@@ -15,6 +15,7 @@ function crearFalso(op: {
   upsert?: Resp
   update?: Resp
   upload?: Resp
+  firma?: { data: { signedUrl: string } | null; error: { message: string; statusCode?: string } | null }
 } = {}) {
   const log: { tipo: string; args: unknown[] }[] = []
   const visitas = op.visitas ?? []
@@ -70,6 +71,10 @@ function crearFalso(op: {
           upload(ruta: string, archivo: File, opciones: unknown) {
             log.push({ tipo: 'upload', args: [bucket, ruta, archivo, opciones] })
             return Promise.resolve(op.upload ?? { data: { path: ruta }, error: null })
+          },
+          createSignedUrl(ruta: string, segundos: number) {
+            log.push({ tipo: 'firma', args: [bucket, ruta, segundos] })
+            return Promise.resolve(op.firma ?? { data: { signedUrl: 'https://x.supabase.co/firmada?token=abc' }, error: null })
           },
           remove(rutas: string[]) {
             log.push({ tipo: 'remove', args: [bucket, rutas] })
@@ -231,7 +236,7 @@ describe('supabaseRepo.subirFotoDocumento', () => {
 
   it('valida tipo y tamaño antes de subir', async () => {
     const { repo, log } = crearFalso()
-    await expect(repo.subirFotoDocumento('t1', foto('application/pdf'))).rejects.toThrow('La foto debe ser una imagen.')
+    await expect(repo.subirFotoDocumento('t1', foto('application/pdf'))).rejects.toThrow('La foto debe ser JPG, PNG, WebP o HEIC.')
     await expect(repo.subirFotoDocumento('t1', foto('image/png', 8 * 1024 * 1024 + 1))).rejects.toThrow('La foto puede pesar hasta 8 MB.')
     expect(log).toEqual([])
   })
@@ -251,5 +256,21 @@ describe('supabaseRepo.subirFotoDocumento', () => {
     )
     expect(log.map((l) => l.tipo)).toEqual(['upload', 'update', 'remove'])
     expect(log[2].args).toEqual(['documentos', [log[0].args[1]]])
+  })
+})
+
+describe('supabaseRepo.urlFotoDocumento', () => {
+  it('pide una URL firmada de unos 5 minutos del bucket documentos', async () => {
+    const { repo, log } = crearFalso()
+    expect(await repo.urlFotoDocumento('t1/abc.jpg')).toBe('https://x.supabase.co/firmada?token=abc')
+    expect(log).toEqual([{ tipo: 'firma', args: ['documentos', 't1/abc.jpg', 300] }])
+  })
+  it('errores en español: sin permiso, no existe y red', async () => {
+    const { repo: r1 } = crearFalso({ firma: { data: null, error: { statusCode: '403', message: 'new row violates row-level security policy' } } })
+    await expect(r1.urlFotoDocumento('t1/a.jpg')).rejects.toThrow('No tienes permiso para ver la foto del documento.')
+    const { repo: r2 } = crearFalso({ firma: { data: null, error: { statusCode: '404', message: 'Object not found' } } })
+    await expect(r2.urlFotoDocumento('t1/a.jpg')).rejects.toThrow('No se encontró la foto del documento.')
+    const { repo: r3 } = crearFalso({ firma: { data: null, error: { message: 'Failed to fetch' } } })
+    await expect(r3.urlFotoDocumento('t1/a.jpg')).rejects.toThrow('No se pudo abrir la foto. Revisa tu conexión e inténtalo de nuevo.')
   })
 })

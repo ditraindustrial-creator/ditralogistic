@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import Taller from './Taller'
 import { crearMemoryRepo } from '../../data/memoryRepo'
 import type { Repo } from '../../data/repo'
+import { ErrorEntrega } from '../../dominio/entrega'
 import type { Etapa, Movimiento, Rol, Trabajo } from '../../dominio/tipos'
 
 const etapas: Etapa[] = [
@@ -31,18 +32,20 @@ function montar(rol: Rol = 'jefe_taller', envolver?: (r: Repo) => Repo) {
       { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null },
       { id: 'c2', nombre: 'Libros del Norte', rut: '2-7', recorridoId: null },
     ],
-    trabajos: [trab('t1', 11, 'c1', 'afilado'), trab('t2', 12, 'c2', 'encuadernacion'), trab('t3', 13, 'c2', 'afilado', true, '2026-11-22T12:00:00Z'), trab('t4', 14, 'c1', 'afilado', false, '2026-11-23T12:00:00Z')],
+    trabajos: [trab('t1', 11, 'c1', 'afilado'), trab('t2', 12, 'c2', 'encuadernacion'), trab('t3', 13, 'c2', 'afilado', true, '2026-11-22T12:00:00Z'), trab('t4', 14, 'c1', 'afilado', false, '2026-11-23T12:00:00Z'), trab('t5', 15, 'c2', 'afilado', false, '2026-11-24T12:00:00Z')],
     lineas: [
       { id: 'l1', trabajoId: 't1', producto: 'Cuchillo', cantidad: 6 },
       { id: 'l2', trabajoId: 't2', producto: 'Libro', cantidad: 3 },
       { id: 'l3', trabajoId: 't3', producto: 'Tijera', cantidad: 2 },
       { id: 'l4', trabajoId: 't4', producto: 'Sierra', cantidad: 6 },
+      { id: 'l5', trabajoId: 't5', producto: 'Hacha', cantidad: 5 },
     ],
     movimientos: [
       mov('m1', 'l1', 6, null, 'a1'), mov('m2', 'l1', 6, 'a1', 'a2'),
       mov('m3', 'l2', 3, null, 'b1'),
       mov('m4', 'l3', 2, null, 'a1'),
       mov('m5', 'l4', 6, null, 'a1'), mov('m6', 'l4', 6, 'a1', 'a2'), mov('m7', 'l4', 4, 'a2', 'a3'),
+      mov('m8', 'l5', 5, null, 'a1'), mov('m9', 'l5', 5, 'a1', 'a4'),
     ],
   })
   const repo = envolver ? envolver(base) : base
@@ -53,6 +56,11 @@ function montar(rol: Rol = 'jefe_taller', envolver?: (r: Repo) => Repo) {
 const espiar = (espia: (...a: unknown[]) => unknown) => (r: Repo): Repo => ({
   ...r,
   moverUnidades: (...a: Parameters<Repo['moverUnidades']>) => (espia(...a), r.moverUnidades(...a)),
+})
+const espiarEntrega = (espia: (...a: unknown[]) => unknown, mover: (...a: unknown[]) => unknown = () => undefined) => (r: Repo): Repo => ({
+  ...r,
+  moverUnidades: (...a: Parameters<Repo['moverUnidades']>) => (mover(...a), r.moverUnidades(...a)),
+  entregarUnidades: (...a: Parameters<Repo['entregarUnidades']>) => (espia(...a), r.entregarUnidades(...a)),
 })
 
 const tarjeta = async (cliente: string, producto: string) => {
@@ -143,14 +151,62 @@ describe('Taller', () => {
     expect(alerta).not.toHaveTextContent('fetch failed')
   })
 
-  it('permite mover a la etapa final', async () => {
-    const espia = vi.fn()
-    montar('jefe_taller', espiar(espia))
-    const fila = await abrir('Imprenta Sur', 'Cuchillo')
-    await userEvent.click(within(fila).getByLabelText('Entregado'))
-    await userEvent.click(within(fila).getByRole('button', { name: 'Mover' }))
-    expect(espia).toHaveBeenCalledWith('l1', 6, 'a2', 'a5')
-    await screen.findByRole('status')
+  describe('mover a la etapa final es una entrega (pide documento y usa entregarUnidades)', () => {
+    it('si el origen no es "Listo", avisa y no llama a nada', async () => {
+      const mover = vi.fn()
+      const entregar = vi.fn()
+      montar('jefe_taller', espiarEntrega(entregar, mover))
+      const fila = await abrir('Imprenta Sur', 'Cuchillo')
+      await userEvent.click(within(fila).getByLabelText('Entregado'))
+      await userEvent.click(within(fila).getByRole('button', { name: 'Entregar…' }))
+      expect(await within(fila).findByRole('alert')).toHaveTextContent('Primero pasa las unidades a Listo.')
+      expect(mover).not.toHaveBeenCalled()
+      expect(entregar).not.toHaveBeenCalled()
+      expect(screen.queryByLabelText(/N° de documento/)).not.toBeInTheDocument()
+    })
+
+    it('desde "Listo" abre la entrega, exige el documento y entrega con una sola llamada (sin moverUnidades)', async () => {
+      const mover = vi.fn()
+      const entregar = vi.fn()
+      montar('jefe_taller', espiarEntrega(entregar, mover))
+      const fila = await abrir('Libros del Norte', 'Hacha')
+      await userEvent.click(within(fila).getByLabelText('Entregado'))
+      await userEvent.click(within(fila).getByRole('button', { name: 'Entregar…' }))
+      await userEvent.click(await screen.findByRole('button', { name: 'Entregar' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Anota el número de guía o factura.')
+      await userEvent.click(screen.getByRole('button', { name: 'Menos Hacha' }))
+      await userEvent.type(screen.getByLabelText(/N° de documento/), '4521')
+      await userEvent.click(screen.getByRole('button', { name: 'Entregar' }))
+      expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 4 unidades · Guía 4521')
+      expect(entregar).toHaveBeenCalledTimes(1)
+      expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l5', cantidad: 4 }], '4521')
+      expect(mover).not.toHaveBeenCalled()
+      await waitFor(async () => expect(await tarjeta('Libros del Norte', 'Hacha')).toHaveTextContent('Listo 1'))
+    })
+
+    it('un rechazo del servidor se muestra en español dentro de la entrega', async () => {
+      montar('jefe_taller', (r) => ({
+        ...r,
+        entregarUnidades: () => Promise.reject(new ErrorEntrega('«Hacha» tiene 1 unidad lista; no se pueden entregar 5 (faltan 4).')),
+      }))
+      const fila = await abrir('Libros del Norte', 'Hacha')
+      await userEvent.click(within(fila).getByLabelText('Entregado'))
+      await userEvent.click(within(fila).getByRole('button', { name: 'Entregar…' }))
+      await userEvent.type(await screen.findByLabelText(/N° de documento/), '1')
+      await userEvent.click(screen.getByRole('button', { name: 'Entregar' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('«Hacha» tiene 1 unidad lista; no se pueden entregar 5 (faltan 4).')
+    })
+
+    it('mover a una etapa que no es final sigue usando moverUnidades', async () => {
+      const mover = vi.fn()
+      const entregar = vi.fn()
+      montar('jefe_taller', espiarEntrega(entregar, mover))
+      const fila = await abrir('Imprenta Sur', 'Cuchillo')
+      await userEvent.click(within(fila).getByRole('button', { name: 'Mover' }))
+      expect(mover).toHaveBeenCalledWith('l1', 6, 'a2', 'a3')
+      expect(entregar).not.toHaveBeenCalled()
+      await screen.findByRole('status')
+    })
   })
 
   it('un rol sin acceso no ve líneas', () => {

@@ -449,7 +449,8 @@ reset role;
 
 -- ===================== Storage: bucket documentos =====================
 select is((select row(public, file_size_limit, allowed_mime_types)::text from storage.buckets where id = 'documentos'),
-  row(false, 8388608::bigint, array['image/*'])::text, 'bucket documentos privado, hasta 8 MB, solo imágenes');
+  row(false, 8388608::bigint, array['image/jpeg', 'image/png', 'image/webp', 'image/heic'])::text,
+  'bucket documentos privado, hasta 8 MB, solo JPG, PNG, WebP y HEIC (sin SVG)');
 insert into storage.buckets (id, name) values ('otro', 'otro');
 select pg_temp.como(:'chofer') \g /dev/null
 select lives_ok($q$insert into storage.objects (bucket_id, name) values ('documentos', 'd0000000-0000-0000-0000-000000000701/a.jpg')$q$,

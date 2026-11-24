@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { ErrorMovimiento, validarMovimiento } from '../../dominio/avance'
 import { puedeVer } from '../../dominio/permisos'
+import type { LineaEntregable } from '../../dominio/entrega'
 import { areasDelRol, destinoPorDefecto, lineasEnCurso, origenPorDefecto, reconciliarSeleccion, type LineaTaller } from '../../dominio/taller'
 import type { Area, UsuarioActual } from '../../dominio/tipos'
 import { useDatosEnVivo } from '../useDatosEnVivo'
+import Entrega from '../entrega/Entrega'
 
 const AREAS: Record<Area, string> = { afilado: 'Afilado', encuadernacion: 'Encuadernación' }
 const ERROR_GENERICO = 'No se pudo mover las unidades. Revisa tu conexión e inténtalo de nuevo.'
+const PRIMERO_LISTO = 'Primero pasa las unidades a Listo.'
 
 const botonGrande = 'min-h-14 rounded bg-teal-700 px-5 py-3 text-xl font-semibold text-white disabled:opacity-50'
 const botonClaro = 'min-h-14 min-w-14 rounded border-2 border-slate-300 bg-white px-4 py-3 text-2xl font-semibold'
@@ -48,6 +51,8 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   const [moviendo, setMoviendo] = useState(false)
   const [errorMover, setErrorMover] = useState('')
   const [confirmacion, setConfirmacion] = useState('')
+  // Mover a la etapa final es entregar: se abre el flujo de entrega (con documento) en vez de mover.
+  const [entrega, setEntrega] = useState<{ lineaId: string; cantidad: number } | null>(null)
 
   const permitidas = useMemo(
     () => (puedeVer(usuario.rol, 'taller') ? areasDelRol(usuario.rol).filter((a) => !area || a === area) : []),
@@ -98,6 +103,26 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
 
   async function mover(l: LineaTaller) {
     if (enCurso.current || !sel) return
+    if (l.etapasArea.find((e) => e.id === sel.destinoId)?.esFinal) {
+      const origen = l.etapasArea.find((e) => e.id === sel.origenId)
+      if (!origen?.esListo) {
+        setErrorMover(PRIMERO_LISTO)
+        return
+      }
+      const cantidad = sel.cantidad.trim() === '' ? NaN : Number(sel.cantidad)
+      try {
+        const dist = new Map(l.distribucion.map((d) => [d.etapa.id, d.unidades]))
+        validarMovimiento(dist, sel.origenId, cantidad)
+      } catch (e) {
+        setErrorMover(e instanceof ErrorMovimiento ? e.message : ERROR_GENERICO)
+        return
+      }
+      setErrorMover('')
+      setConfirmacion('')
+      setEntrega({ lineaId: l.lineaId, cantidad })
+      setSel(null)
+      return
+    }
     const cantidad = sel.cantidad.trim() === '' ? NaN : Number(sel.cantidad)
     const destino = l.etapasArea.find((e) => e.id === sel.destinoId)
     try {
@@ -124,8 +149,28 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
     }
   }
 
+  const lineaEntrega = entrega ? lineas?.find((x) => x.lineaId === entrega.lineaId) : undefined
+  const entregables: LineaEntregable[] = []
+  if (lineaEntrega) {
+    const listas = lineaEntrega.distribucion.filter((d) => d.etapa.esListo).reduce((s, d) => s + d.unidades, 0)
+    if (listas > 0) {
+      entregables.push({ lineaId: lineaEntrega.lineaId, trabajoId: lineaEntrega.trabajoId, numero: lineaEntrega.numero, producto: lineaEntrega.producto, listas })
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      {entrega && (
+        <Entrega
+          key={entrega.lineaId}
+          repo={repo}
+          titulo={`Entregar${lineaEntrega ? ` · ${lineaEntrega.clienteNombre}` : ''}`}
+          lineas={entregables}
+          cantidadesIniciales={{ [entrega.lineaId]: entrega.cantidad }}
+          alTerminar={() => void recargar()}
+          alCerrar={() => setEntrega(null)}
+        />
+      )}
       {permitidas.length > 1 && (
         <div className="flex gap-2" role="group" aria-label="Área">
           {(['', ...permitidas] as const).map((a) => (
@@ -233,7 +278,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
 
                   {errorMover && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{errorMover}</p>}
                   <button type="button" className={botonGrande} disabled={moviendo} onClick={() => void mover(l)}>
-                    {moviendo ? 'Moviendo…' : 'Mover'}
+                    {moviendo ? 'Moviendo…' : l.etapasArea.find((e) => e.id === sel.destinoId)?.esFinal ? 'Entregar…' : 'Mover'}
                   </button>
                 </div>
               )}
