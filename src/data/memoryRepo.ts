@@ -90,7 +90,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
       const plan = planificarClientes(clientes, entrantes)
       for (const a of plan.actualizaciones) Object.assign(clientes.find((c) => c.id === a.id)!, a.cambios)
       for (const n of plan.nuevos) clientes.push({ ...n, id: `cli-${siguienteId++}`, recorridoId: null })
-      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length }
+      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length, sinCambios: plan.sinCambios }
     },
     async listarRecorridos() {
       return recorridos.map((r) => ({ ...r }))
@@ -121,7 +121,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
       const plan = planificarProductos(productos, entrantes)
       for (const a of plan.actualizaciones) Object.assign(productos.find((p) => p.id === a.id)!, a.cambios)
       for (const n of plan.nuevos) productos.push({ ...n, id: `prod-${siguienteId++}` })
-      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length }
+      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length, sinCambios: plan.sinCambios }
     },
   }
 }

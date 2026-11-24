@@ -26,7 +26,7 @@ describe('Maestros: clientes', () => {
     await userEvent.selectOptions(screen.getByLabelText('Columna del RUT'), 'Rut Cliente')
     await userEvent.click(screen.getByRole('button', { name: 'Importar clientes' }))
 
-    expect(await screen.findByText('2 clientes nuevos, 0 actualizados.')).toBeInTheDocument()
+    expect(await screen.findByText('2 clientes nuevos, 0 actualizados, 0 sin cambios.')).toBeInTheDocument()
     const errores = screen.getByRole('list', { name: 'Errores de importación' })
     expect(within(errores).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
       'Fila 4: Falta el nombre.',
@@ -49,14 +49,14 @@ describe('Maestros: clientes', () => {
     await userEvent.selectOptions(await screen.findByLabelText('Columna del nombre'), 'Nombre')
     await userEvent.selectOptions(screen.getByLabelText('Columna del RUT'), 'RUT')
     await userEvent.click(screen.getByRole('button', { name: 'Importar clientes' }))
-    expect(await screen.findByText('1 cliente nuevo, 0 actualizados.')).toBeInTheDocument()
+    expect(await screen.findByText('1 cliente nuevo, 0 actualizados, 0 sin cambios.')).toBeInTheDocument()
     expect((await repo.listarClientes())[0].nombre).toBe('Peña y Cía')
   })
 
   it('importar el mismo archivo otra vez actualiza y no duplica', async () => {
     const repo = crearMemoryRepo()
     render(<Maestros repo={repo} />)
-    for (const esperado of ['1 cliente nuevo, 0 actualizados.', '0 clientes nuevos, 1 actualizado.']) {
+    for (const esperado of ['1 cliente nuevo, 0 actualizados, 0 sin cambios.', '0 clientes nuevos, 0 actualizados, 1 sin cambios.']) {
       await userEvent.upload(await screen.findByLabelText('Archivo de clientes (CSV)'), archivo('Nombre;RUT\nUno;1-9\n'))
       await userEvent.selectOptions(await screen.findByLabelText('Columna del nombre'), 'Nombre')
       await userEvent.selectOptions(screen.getByLabelText('Columna del RUT'), 'RUT')
@@ -139,7 +139,7 @@ describe('Maestros: productos', () => {
     await userEvent.selectOptions(screen.getByLabelText('Columna del nombre'), 'Descripción')
     await userEvent.selectOptions(screen.getByLabelText('Área de todos los productos'), 'Afilado')
     await userEvent.click(screen.getByRole('button', { name: 'Importar productos' }))
-    expect(await screen.findByText('2 productos nuevos, 0 actualizados.')).toBeInTheDocument()
+    expect(await screen.findByText('2 productos nuevos, 0 actualizados, 0 sin cambios.')).toBeInTheDocument()
     expect(screen.getByRole('list', { name: 'Errores de importación' })).toHaveTextContent('Fila 3: Falta el código.')
     expect(within(screen.getByRole('list', { name: 'Productos' })).getByText('Cuchillo de chef')).toBeInTheDocument()
     expect((await repo.listarProductos()).map((p) => p.area)).toEqual(['afilado', 'afilado'])

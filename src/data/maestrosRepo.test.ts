@@ -5,17 +5,28 @@ describe('memoryRepo: maestros', () => {
   it('importar clientes dos veces actualiza y no duplica; conserva el recorrido asignado', async () => {
     const r = crearMemoryRepo()
     const rec = await r.guardarRecorrido({ nombre: 'Lunes centro', dia: 1, camioneta: 'A', lejano: false })
-    expect(await r.guardarClientes([{ nombre: 'Uno', rut: '1-9' }])).toEqual({ creados: 1, actualizados: 0 })
+    expect(await r.guardarClientes([{ nombre: 'Uno', rut: '1-9' }])).toEqual({ creados: 1, actualizados: 0, sinCambios: 0 })
     const [c] = await r.listarClientes()
     await r.asignarRecorrido(c.id, rec.id)
     expect(await r.guardarClientes([{ nombre: 'Uno renombrado', rut: '1-9', direccion: 'Calle 1' }, { nombre: 'Dos', rut: '2-7' }])).toEqual({
       creados: 1,
       actualizados: 1,
+      sinCambios: 0,
     })
     const lista = await r.listarClientes()
     expect(lista).toHaveLength(2)
     expect(lista.find((x) => x.rut === '1-9')).toMatchObject({ id: c.id, nombre: 'Uno renombrado', direccion: 'Calle 1', recorridoId: rec.id })
     expect(lista.find((x) => x.rut === '2-7')?.recorridoId).toBeNull()
+  })
+
+  it('re-importar lo mismo no cambia nada y conserva el recorrido', async () => {
+    const r = crearMemoryRepo()
+    const rec = await r.guardarRecorrido({ nombre: 'Lunes', dia: 1, camioneta: 'A', lejano: false })
+    await r.guardarClientes([{ nombre: 'Uno', rut: '1-9' }])
+    const [c] = await r.listarClientes()
+    await r.asignarRecorrido(c.id, rec.id)
+    expect(await r.guardarClientes([{ nombre: 'Uno', rut: '1-9' }])).toEqual({ creados: 0, actualizados: 0, sinCambios: 1 })
+    expect((await r.listarClientes())[0].recorridoId).toBe(rec.id)
   })
 
   it('guardarRecorrido crea y, con id, edita; asignarRecorrido(null) lo quita', async () => {
@@ -41,8 +52,8 @@ describe('memoryRepo: maestros', () => {
 
   it('productos: importar dos veces actualiza por código', async () => {
     const r = crearMemoryRepo()
-    expect(await r.guardarProductos([{ codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado' }])).toEqual({ creados: 1, actualizados: 0 })
-    expect(await r.guardarProductos([{ codigo: 'A-1', nombre: 'Cuchillo chef', area: 'afilado' }])).toEqual({ creados: 0, actualizados: 1 })
+    expect(await r.guardarProductos([{ codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado' }])).toEqual({ creados: 1, actualizados: 0, sinCambios: 0 })
+    expect(await r.guardarProductos([{ codigo: 'A-1', nombre: 'Cuchillo chef', area: 'afilado' }])).toEqual({ creados: 0, actualizados: 1, sinCambios: 0 })
     expect(await r.listarProductos()).toMatchObject([{ codigo: 'A-1', nombre: 'Cuchillo chef' }])
   })
 

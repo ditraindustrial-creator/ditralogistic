@@ -4,6 +4,8 @@ import type { ClienteImportado, ProductoImportado } from '../dominio/csv'
 export interface ResultadoGuardado {
   creados: number
   actualizados: number
+  /** Filas del archivo que ya estaban guardadas tal cual. */
+  sinCambios: number
 }
 
 /** Acceso a datos. Cada tarea siguiente agrega sus métodos aquí y en memoryRepo. */

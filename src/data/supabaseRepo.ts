@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Repo } from './repo'
 import type { Area, Cliente, Movimiento, Producto, Recorrido, Rol, UsuarioActual } from '../dominio/tipos'
 import { planificarClientes, planificarProductos } from '../dominio/maestros'
@@ -87,8 +87,31 @@ function lanzarSiError(error: { code?: string; message: string } | null) {
 
 const LOTE = 500
 
+const PAGINA = 1000
+
+/**
+ * Lee todas las filas de una consulta. PostgREST corta cada respuesta en un máximo (1000 en
+ * Supabase), así que se pide por páginas con range() hasta recibir una vacía; avanza por lo que
+ * realmente llegó, así que funciona aunque el servidor tenga un límite menor. La consulta debe
+ * traer un orden estable y único (p. ej. por id) para que las páginas no se solapen.
+ */
+export async function leerTodas<T>(
+  pagina: (desde: number, hasta: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const todas: T[] = []
+  for (;;) {
+    const { data, error } = await pagina(todas.length, todas.length + PAGINA - 1)
+    if (error) throw new Error(error.message)
+    if (!data || data.length === 0) return todas
+    todas.push(...data)
+  }
+}
+
 export function crearSupabaseRepo(url: string, anonKey: string): Repo {
-  const sb = createClient(url, anonKey)
+  return crearRepoConCliente(createClient(url, anonKey))
+}
+
+export function crearRepoConCliente(sb: SupabaseClient): Repo {
 
   async function cargarPerfil(id: string): Promise<UsuarioActual | null> {
     const { data, error } = await sb.from('perfiles').select('nombre, rol').eq('usuario_id', id).maybeSingle()
@@ -125,9 +148,14 @@ export function crearSupabaseRepo(url: string, anonKey: string): Repo {
       return filaAMovimiento(data as FilaMovimiento)
     },
     async listarClientes() {
-      const { data, error } = await sb.from('clientes').select('id, nombre, rut, contacto, direccion, recorrido_id').order('nombre')
-      if (error) throw new Error('No se pudieron cargar los clientes. Revisa tu conexión.')
-      return (data as FilaCliente[]).map(filaACliente)
+      try {
+        const filas = await leerTodas<FilaCliente>((d, h) =>
+          sb.from('clientes').select('id, nombre, rut, contacto, direccion, recorrido_id').order('id').range(d, h),
+        )
+        return filas.map(filaACliente).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+      } catch {
+        throw new Error('No se pudieron cargar los clientes. Revisa tu conexión.')
+      }
     },
     async guardarClientes(entrantes) {
       const plan = planificarClientes(await repo.listarClientes(), entrantes)
@@ -140,11 +168,21 @@ export function crearSupabaseRepo(url: string, anonKey: string): Repo {
         }))
         lanzarSiError((await sb.from('clientes').insert(lote)).error)
       }
-      // Los cambios solo traen lo que el archivo informó: no se borran contacto ni dirección existentes.
+      // Solo las filas que cambian, en lotes. Cada fila lleva únicamente lo que el archivo informó
+      // (así no se borran contacto, dirección ni recorrido) y los lotes agrupan filas con las mismas
+      // columnas, para que PostgREST no rellene con null las que faltan.
+      const grupos = new Map<string, Record<string, unknown>[]>()
       for (const a of plan.actualizaciones) {
-        lanzarSiError((await sb.from('clientes').update(a.cambios).eq('id', a.id)).error)
+        const fila = { id: a.id, ...a.cambios }
+        const clave = Object.keys(fila).sort().join(',')
+        grupos.set(clave, [...(grupos.get(clave) ?? []), fila])
       }
-      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length }
+      for (const filas of grupos.values()) {
+        for (let i = 0; i < filas.length; i += LOTE) {
+          lanzarSiError((await sb.from('clientes').upsert(filas.slice(i, i + LOTE), { onConflict: 'id' })).error)
+        }
+      }
+      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length, sinCambios: plan.sinCambios }
     },
     async listarRecorridos() {
       const { data, error } = await sb.from('recorridos').select('id, nombre, dia, camioneta, lejano').order('dia').order('nombre')
@@ -165,9 +203,14 @@ export function crearSupabaseRepo(url: string, anonKey: string): Repo {
       if (!data || data.length === 0) throw new Error('No se pudo asignar el recorrido (el cliente no existe o no tienes permiso).')
     },
     async listarProductos() {
-      const { data, error } = await sb.from('productos').select('id, codigo, nombre, area').order('codigo')
-      if (error) throw new Error('No se pudo cargar el catálogo. Revisa tu conexión.')
-      return (data as FilaProducto[]).map(filaAProducto)
+      try {
+        const filas = await leerTodas<FilaProducto>((d, h) =>
+          sb.from('productos').select('id, codigo, nombre, area').order('id').range(d, h),
+        )
+        return filas.map(filaAProducto).sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'))
+      } catch {
+        throw new Error('No se pudo cargar el catálogo. Revisa tu conexión.')
+      }
     },
     async guardarProductos(entrantes) {
       const plan = planificarProductos(await repo.listarProductos(), entrantes)
@@ -175,7 +218,7 @@ export function crearSupabaseRepo(url: string, anonKey: string): Repo {
       for (let i = 0; i < todos.length; i += LOTE) {
         lanzarSiError((await sb.from('productos').upsert(todos.slice(i, i + LOTE), { onConflict: 'codigo' })).error)
       }
-      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length }
+      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length, sinCambios: plan.sinCambios }
     },
   }
   return repo

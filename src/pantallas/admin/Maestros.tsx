@@ -35,7 +35,7 @@ function pluralNuevos(n: number, singular: string, plural: string): string {
 
 function resumen(r: ResultadoGuardado, singular: string, plural: string): string {
   const act = r.actualizados === 1 ? '1 actualizado' : `${r.actualizados} actualizados`
-  return `${pluralNuevos(r.creados, singular, plural)}, ${act}.`
+  return `${pluralNuevos(r.creados, singular, plural)}, ${act}, ${r.sinCambios} sin cambios.`
 }
 
 interface CampoImportador {
@@ -219,7 +219,7 @@ function PestanaClientes({ repo, clientes, recorridos, recargar }: { repo: Repo;
             contacto: m.contacto || undefined,
             direccion: m.direccion || undefined,
           })
-          const r = buenos.length > 0 ? await repo.guardarClientes(buenos) : { creados: 0, actualizados: 0 }
+          const r = buenos.length > 0 ? await repo.guardarClientes(buenos) : { creados: 0, actualizados: 0, sinCambios: 0 }
           await recargar()
           return { resumen: resumen(r, 'cliente', 'clientes'), errores }
         }}
@@ -413,7 +413,7 @@ function PestanaProductos({ repo, productos, recargar }: { repo: Repo; productos
             area: areaPorDefecto ? undefined : m.area || undefined,
             areaPorDefecto: areaPorDefecto || undefined,
           })
-          const r = buenos.length > 0 ? await repo.guardarProductos(buenos) : { creados: 0, actualizados: 0 }
+          const r = buenos.length > 0 ? await repo.guardarProductos(buenos) : { creados: 0, actualizados: 0, sinCambios: 0 }
           await recargar()
           return { resumen: resumen(r, 'producto', 'productos'), errores }
         }}
