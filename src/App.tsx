@@ -3,6 +3,7 @@ import type { Repo } from './data/repo'
 import type { Pantalla, UsuarioActual } from './dominio/tipos'
 import { puedeVer } from './dominio/permisos'
 import Maestros from './pantallas/admin/Maestros'
+import Recepcion from './pantallas/recepcion/Recepcion'
 
 const PANTALLAS: { id: Pantalla; titulo: string }[] = [
   { id: 'listo', titulo: 'Qué hay listo' },
@@ -97,7 +98,13 @@ export default function App({ repo }: { repo: Repo }) {
         <section>
           <button className="mb-4 rounded border px-4 py-2" onClick={() => setPantalla(null)}>← Menú</button>
           <h1 className="text-2xl font-bold">{actual.titulo}</h1>
-          {actual.id === 'admin' ? <div className="mt-4"><Maestros repo={repo} /></div> : <p className="mt-2 text-slate-600">Próximamente.</p>}
+          {actual.id === 'admin' ? (
+            <div className="mt-4"><Maestros repo={repo} /></div>
+          ) : actual.id === 'recepcion' ? (
+            <div className="mt-4"><Recepcion repo={repo} usuario={usuario} /></div>
+          ) : (
+            <p className="mt-2 text-slate-600">Próximamente.</p>
+          )}
         </section>
       ) : (
         <nav aria-label="Menú" className="flex flex-col gap-3">

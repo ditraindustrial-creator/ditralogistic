@@ -1,4 +1,5 @@
-import type { Cliente, Movimiento, Producto, Recorrido, UsuarioActual } from '../dominio/tipos'
+import type { Cliente, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual } from '../dominio/tipos'
+import type { DatosTrabajoNuevo } from '../dominio/trabajo'
 import type { ClienteImportado, ProductoImportado } from '../dominio/csv'
 
 export interface ResultadoGuardado {
@@ -19,6 +20,13 @@ export interface Repo {
    * del usuario con sesión. Lanza ErrorMovimiento (mensaje en español) si no se puede.
    */
   moverUnidades(lineaId: string, cantidad: number, origenId: string, destinoId: string): Promise<Movimiento>
+
+  /**
+   * Recibe un trabajo: lo crea con sus líneas y, por cada línea, un movimiento inicial (sin origen)
+   * hacia la primera etapa del área con la cantidad completa, todo o nada. Lanza ErrorTrabajo
+   * (mensaje en español) si no se puede.
+   */
+  crearTrabajo(datos: DatosTrabajoNuevo): Promise<Trabajo>
 
   listarClientes(): Promise<Cliente[]>
   /** Crea o actualiza por RUT (idempotente). No cambia el recorrido de los que ya existen. */

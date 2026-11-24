@@ -1,5 +1,6 @@
 import type { Repo } from './repo'
 import type { Cliente, Etapa, Linea, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual } from '../dominio/tipos'
+import { ErrorTrabajo, primeraEtapa, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
 import { planificarClientes, planificarProductos } from '../dominio/maestros'
 import {
   ErrorMovimiento,
@@ -81,6 +82,50 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
       }
       movimientos.push(mov)
       return mov
+    },
+    // Mismas reglas que crear_trabajo en la base: validación completa antes de escribir, recepción
+    // solo a la primera etapa del área y todo o nada. Es síncrono entre validar y escribir.
+    async crearTrabajo(datos: DatosTrabajoNuevo) {
+      if (!actual) throw new ErrorTrabajo('Debes iniciar sesión para recibir trabajos.')
+      if (!['admin', 'secretaria', 'jefe_taller', 'chofer'].includes(actual.rol)) {
+        throw new ErrorTrabajo('No tienes permiso para recibir trabajos.')
+      }
+      const errores = validarTrabajoNuevo(datos)
+      if (errores.length > 0) throw new ErrorTrabajo(errores[0])
+      if (!clientes.some((c) => c.id === datos.clienteId)) throw new ErrorTrabajo('El cliente no existe.')
+      const primera = primeraEtapa(etapas, datos.area)
+      if (!primera) throw new ErrorTrabajo('El área no tiene etapas configuradas.')
+      const texto = (s?: string) => s?.trim() || undefined
+      const trabajo: Trabajo = {
+        id: `trab-${siguienteId++}`,
+        numero: trabajos.reduce((m, t) => Math.max(m, t.numero), 0) + 1,
+        clienteId: datos.clienteId,
+        area: datos.area,
+        entrada: datos.entrada,
+        salida: datos.salida ?? datos.entrada,
+        recibidoEn: new Date().toISOString(),
+        urgente: datos.urgente ?? false,
+      }
+      const guia = texto(datos.guiaRetiro)
+      const notas = texto(datos.notas)
+      if (guia) trabajo.guiaRetiro = guia
+      if (notas) trabajo.notas = notas
+      const nuevasLineas: Linea[] = datos.lineas.map((l) => {
+        const linea: Linea = { id: `lin-${siguienteId++}`, trabajoId: trabajo.id, producto: l.producto.trim(), cantidad: l.cantidad }
+        const nota = texto(l.nota)
+        if (nota) linea.nota = nota
+        return linea
+      })
+      const creadoEn = trabajo.recibidoEn
+      trabajos.push(trabajo)
+      lineas.push(...nuevasLineas)
+      for (const l of nuevasLineas) {
+        movimientos.push({
+          id: `mov-${siguienteId++}`, lineaId: l.id, cantidad: l.cantidad,
+          etapaOrigenId: null, etapaDestinoId: primera.id, usuarioId: actual.id, creadoEn,
+        })
+      }
+      return { ...trabajo }
     },
     async listarClientes() {
       return clientes.map((c) => ({ ...c }))

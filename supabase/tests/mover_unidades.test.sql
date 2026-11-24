@@ -19,6 +19,7 @@
 begin;
 select plan(26);
 
+select id as recibido from etapas where area = 'afilado' and nombre = 'Recibido' \gset
 select id as taller from etapas where area = 'afilado' and nombre = 'En taller' \gset
 select id as listo from etapas where area = 'afilado' and nombre = 'Listo' \gset
 select id as afilado_et from etapas where area = 'afilado' and nombre = 'Afilado' \gset
@@ -86,7 +87,11 @@ begin
         select 'b0000000-0000-0000-0000-0000000000c1', id, 'Cuchillo', 6 from t;
       insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
         select 'b0000000-0000-0000-0000-0000000000c1', 6, null, id, 'a0000000-0000-0000-0000-0000000000c1'
-          from etapas where area = 'afilado' and nombre = 'En taller';
+          from etapas where area = 'afilado' and nombre = 'Recibido';
+      insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
+        select 'b0000000-0000-0000-0000-0000000000c1', 6, r.id, t.id, 'a0000000-0000-0000-0000-0000000000c1'
+          from etapas r, etapas t where r.area = 'afilado' and r.nombre = 'Recibido'
+           and t.area = 'afilado' and t.nombre = 'En taller';
     $$);
 
     perform dblink_connect('a', p_conn);
@@ -164,8 +169,10 @@ insert into trabajos (id, cliente_id, area, entrada, salida) values
 insert into lineas (id, trabajo_id, producto, cantidad) values
   ('b0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 'Cuchillo', 6);
 -- Recepción inicial (la hará crearTrabajo en la tarea 4): 6 unidades en "En taller".
+-- Recepción (solo a la primera etapa) y paso a En taller.
 insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
-  values ('b0000000-0000-0000-0000-000000000001', 6, null, :'taller', 'a0000000-0000-0000-0000-000000000001');
+  values ('b0000000-0000-0000-0000-000000000001', 6, null, :'recibido', 'a0000000-0000-0000-0000-000000000001'),
+         ('b0000000-0000-0000-0000-000000000001', 6, :'recibido', :'taller', 'a0000000-0000-0000-0000-000000000001');
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000001"}', true) \g /dev/null
@@ -201,7 +208,7 @@ select throws_ok(format($q$insert into movimientos (linea_id, cantidad, etapa_or
   'P0001', 'Solo hay 2 unidades en esta etapa; no se pueden mover 5.', 'insert directo tampoco puede sacar más de lo que hay');
 select throws_ok(format($q$insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
                           values (%L, 1, null, %L, %L)$q$,
-  'b0000000-0000-0000-0000-000000000001', :'taller', 'a0000000-0000-0000-0000-000000000001'),
+  'b0000000-0000-0000-0000-000000000001', :'recibido', 'a0000000-0000-0000-0000-000000000001'),
   'P0001', 'La línea tiene 6 unidades y ya se recibieron 6; no se pueden recibir 1 más.', 'no se recibe más que el total de la línea');
 select throws_ok(format($q$insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
                           values (%L, 1, %L, %L, %L)$q$,
@@ -219,7 +226,7 @@ select throws_ok(format('select mover_unidades(%L, 1, %L, %L)', 'b0000000-0000-0
   '42501', 'Debes iniciar sesión para mover unidades.', 'sin sesión no se mueve nada');
 
 reset role;
-select is((select count(*) from movimientos where linea_id = 'b0000000-0000-0000-0000-000000000001'), 2::bigint,
+select is((select count(*) from movimientos where linea_id = 'b0000000-0000-0000-0000-000000000001'), 3::bigint,
   'los intentos fallidos no dejaron movimientos');
 select is(unidades_en_etapa('b0000000-0000-0000-0000-000000000001', :'taller'), 2,
   'tras los fallos siguen 2 en En taller');

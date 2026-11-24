@@ -27,6 +27,14 @@ describe('App', () => {
     expect(await screen.findByRole('tab', { name: 'Recorridos' })).toBeInTheDocument()
   })
 
+  it('Recepción abre el formulario de recepción', async () => {
+    const repo = crearMemoryRepo({ usuario: { id: 'u1', nombre: 'Pedro', rol: 'chofer' } })
+    render(<App repo={repo} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Recepción' }))
+    expect(await screen.findByRole('button', { name: 'Guardar trabajo' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Ruta propia (retiro)')).toBeChecked()
+  })
+
   it('sin sesión muestra login y entra con credenciales válidas', async () => {
     const repo = crearMemoryRepo({
       cuentas: { 'p@x.cl': { clave: 'abc', usuario: { id: 'u1', nombre: 'Pedro', rol: 'chofer' } } },

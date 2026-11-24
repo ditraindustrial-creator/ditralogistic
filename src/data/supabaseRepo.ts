@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Repo } from './repo'
-import type { Area, Cliente, Movimiento, Producto, Recorrido, Rol, UsuarioActual } from '../dominio/tipos'
+import type { Area, Cliente, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual } from '../dominio/tipos'
 import { planificarClientes, planificarProductos } from '../dominio/maestros'
+import { ErrorTrabajo, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
 import { ErrorMovimiento, validarCantidad } from '../dominio/avance'
 
 interface FilaMovimiento {
@@ -36,6 +37,59 @@ export function errorDeMovimiento(e: { code?: string; message: string }): Error 
   }
   if (e.code === '22P02') return new ErrorMovimiento('La cantidad debe ser un número entero mayor que cero.')
   return new Error('No se pudo registrar el movimiento. Revisa tu conexión e inténtalo de nuevo.')
+}
+
+interface FilaTrabajo {
+  id: string
+  numero: number
+  cliente_id: string
+  area: string
+  entrada: string
+  salida: string
+  recibido_en: string
+  guia_retiro: string | null
+  guia_despacho: string | null
+  factura: string | null
+  transporte: string | null
+  urgente: boolean
+  notas: string | null
+  foto_documento: string | null
+}
+
+export function filaATrabajo(f: FilaTrabajo): Trabajo {
+  const t: Trabajo = {
+    id: f.id,
+    numero: Number(f.numero),
+    clienteId: f.cliente_id,
+    area: f.area as Area,
+    entrada: f.entrada as Modalidad,
+    salida: f.salida as Modalidad,
+    recibidoEn: f.recibido_en,
+    urgente: f.urgente,
+  }
+  if (f.guia_retiro) t.guiaRetiro = f.guia_retiro
+  if (f.guia_despacho) t.guiaDespacho = f.guia_despacho
+  if (f.factura) t.factura = f.factura
+  if (f.transporte) t.transporte = f.transporte
+  if (f.notas) t.notas = f.notas
+  if (f.foto_documento) t.fotoDocumento = f.foto_documento
+  return t
+}
+
+const MENSAJES_PERMISO = ['Debes iniciar sesión para recibir trabajos.', 'No tienes permiso para recibir trabajos.']
+
+/**
+ * Traduce un error de crear_trabajo. Las reglas de la base (P0001) y los dos avisos de permiso ya
+ * vienen en español; cualquier otro error (red, restricciones, mensajes en inglés) se reemplaza
+ * por un mensaje genérico para no mostrar texto técnico.
+ */
+export function errorDeTrabajo(e: { code?: string; message: string }): Error {
+  if (e.code === 'P0001') return new ErrorTrabajo(e.message)
+  if (e.code === '42501') {
+    return new ErrorTrabajo(MENSAJES_PERMISO.includes(e.message) ? e.message : 'No tienes permiso para recibir trabajos.')
+  }
+  if (e.code === '22P02' || e.code === '22003') return new ErrorTrabajo('Revisa los datos: hay un valor que no es válido.')
+  return new Error('No se pudo guardar el trabajo. Revisa tu conexión e inténtalo de nuevo.')
 }
 
 interface FilaCliente {
@@ -146,6 +200,25 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
       })
       if (error) throw errorDeMovimiento(error)
       return filaAMovimiento(data as FilaMovimiento)
+    },
+    async crearTrabajo(datos: DatosTrabajoNuevo) {
+      const errores = validarTrabajoNuevo(datos)
+      if (errores.length > 0) throw new ErrorTrabajo(errores[0])
+      // Una sola llamada a la base: trabajo, líneas y movimientos iniciales en una transacción.
+      const { data, error } = await sb.rpc('crear_trabajo', {
+        p_datos: {
+          cliente_id: datos.clienteId,
+          area: datos.area,
+          entrada: datos.entrada,
+          salida: datos.salida,
+          urgente: datos.urgente ?? false,
+          guia_retiro: datos.guiaRetiro,
+          notas: datos.notas,
+          lineas: datos.lineas.map((l) => ({ producto: l.producto, cantidad: l.cantidad, nota: l.nota })),
+        },
+      })
+      if (error) throw errorDeTrabajo(error)
+      return filaATrabajo(data as FilaTrabajo)
     },
     async listarClientes() {
       try {

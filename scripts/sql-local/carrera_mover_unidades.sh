@@ -31,7 +31,10 @@ with t as (insert into trabajos (cliente_id, area, entrada, salida)
            values ('c0000000-0000-0000-0000-0000000000e1', 'afilado', 'cliente', 'cliente') returning id)
 insert into lineas (id, trabajo_id, producto, cantidad) select '$LINEA', id, 'Cuchillo', 6 from t;
 insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
-  select '$LINEA', 6, null, id, '$OP' from etapas where area = 'afilado' and nombre = 'En taller';
+  select '$LINEA', 6, null, id, '$OP' from etapas where area = 'afilado' and nombre = 'Recibido';
+insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
+  select '$LINEA', 6, r.id, t.id, '$OP' from etapas r, etapas t
+   where r.area = 'afilado' and r.nombre = 'Recibido' and t.area = 'afilado' and t.nombre = 'En taller';
 SQL
 
 for i in $(seq 1 "$N"); do
