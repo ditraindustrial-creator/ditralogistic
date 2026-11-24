@@ -26,3 +26,6 @@ done
 
 echo "== carrera con sesiones psql paralelas"
 DB="$DB" scripts/sql-local/carrera_mover_unidades.sh
+
+echo "== carrera de entregas con sesiones psql paralelas"
+DB="$DB" scripts/sql-local/carrera_entregar_unidades.sh

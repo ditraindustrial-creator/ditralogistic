@@ -1,4 +1,5 @@
-import type { Cliente, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual } from '../dominio/tipos'
+import type { Cliente, Modalidad, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
+import type { Entrega } from '../dominio/entrega'
 import type { DatosTrabajoNuevo } from '../dominio/trabajo'
 import type { DatosOperacion } from '../dominio/listo'
 import type { ClienteImportado, ProductoImportado } from '../dominio/csv'
@@ -50,4 +51,28 @@ export interface Repo {
    * Devuelve la función que cancela la suscripción.
    */
   suscribirCambios(alCambiar: () => void, alEstado?: (conectado: boolean) => void): () => void
+
+  // ---- Ruta de mañana y hoja del chofer (Task 7) ----
+  /** Visitas de un día ('YYYY-MM-DD'). Los roles sin acceso (operarios) reciben una lista vacía. */
+  listarVisitas(fecha: string): Promise<Visita[]>
+  /**
+   * Marca la confirmación de la visita de un cliente en un día hábil. Si aún no hay visita ese día
+   * se crea (una por cliente y día). Lanza ErrorVisita (en español) si no se puede.
+   */
+  marcarVisita(fecha: string, clienteId: string, confirmada: Visita['confirmada']): Promise<void>
+  /** Agrega (o marca como solicitada) una visita fuera de ruta en un día hábil, con nota opcional. */
+  agregarVisitaExtra(fecha: string, clienteId: string, nota?: string): Promise<void>
+  /** Cambia la modalidad de salida de un trabajo (decide si va en la ruta, al mostrador o por encomienda). */
+  actualizarSalida(trabajoId: string, salida: Modalidad): Promise<void>
+  /**
+   * Entrega, todo o nada, unidades listas de una o varias líneas: las mueve a la etapa final del área
+   * y anota `documento` (N° de guía o factura) en la guía de despacho de cada trabajo. Nunca entrega
+   * más de lo que está listo. Lanza ErrorEntrega (en español) si no se puede.
+   */
+  entregarUnidades(entregas: Entrega[], documento: string): Promise<void>
+  /**
+   * Sube la foto (opcional) del documento firmado al bucket `documentos`, en la carpeta del trabajo,
+   * y la asocia al trabajo. Solo imágenes de hasta 8 MB. Devuelve la ruta guardada.
+   */
+  subirFotoDocumento(trabajoId: string, archivo: File): Promise<string>
 }

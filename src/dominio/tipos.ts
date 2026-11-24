@@ -83,7 +83,8 @@ export interface Visita {
   id: string
   fecha: string
   clienteId: string
-  recorridoId: string
+  /** Informativo; la ruta usa el recorrido actual del cliente. Null en visitas extra. */
+  recorridoId: string | null
   confirmada: 'si' | 'no' | 'sin_respuesta'
   requiereConfirmacion: boolean
   solicitada: boolean

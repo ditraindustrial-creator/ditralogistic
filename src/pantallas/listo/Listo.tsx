@@ -53,11 +53,7 @@ function agrupar(filas: FilaListo[]): Grupo[] {
 
 export default function Listo({ repo }: { repo: Repo }) {
   const { datos, error, conectado } = useDatosEnVivo(repo)
-  const filas = useMemo(() => {
-    if (!datos) return null
-    const clientePorTrabajo = new Map(datos.trabajos.map((t) => [t.id, t.clienteId]))
-    return resumenListo(datos).map((f) => ({ ...f, clienteId: clientePorTrabajo.get(f.trabajoId) ?? '' }))
-  }, [datos])
+  const filas = useMemo(() => (datos ? resumenListo(datos) : null), [datos])
   const [area, setArea] = useState('')
   const [cliente, setCliente] = useState('')
   const [recorrido, setRecorrido] = useState('')

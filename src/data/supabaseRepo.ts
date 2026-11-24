@@ -1,8 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Repo } from './repo'
-import type { Area, Cliente, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual } from '../dominio/tipos'
+import type { Area, Cliente, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
 import { planificarClientes, planificarProductos } from '../dominio/maestros'
-import { ErrorTrabajo, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
+import { ErrorTrabajo, MODALIDADES, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
+import { ErrorEntrega, nombreFotoDocumento, validarEntradaEntrega, validarFotoDocumento } from '../dominio/entrega'
+import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
 import { ErrorMovimiento, validarCantidad } from '../dominio/avance'
 
 interface FilaMovimiento {
@@ -189,6 +191,80 @@ export async function leerTodas<T>(
   }
 }
 
+interface FilaVisita {
+  id: string
+  fecha: string
+  cliente_id: string
+  recorrido_id: string | null
+  confirmada: string
+  requiere_confirmacion: boolean
+  solicitada: boolean
+  nota: string | null
+}
+const COLUMNAS_VISITA = 'id, fecha, cliente_id, recorrido_id, confirmada, requiere_confirmacion, solicitada, nota'
+
+export function filaAVisita(f: FilaVisita): Visita {
+  const v: Visita = {
+    id: f.id,
+    fecha: f.fecha,
+    clienteId: f.cliente_id,
+    recorridoId: f.recorrido_id,
+    confirmada: f.confirmada as Visita['confirmada'],
+    requiereConfirmacion: f.requiere_confirmacion,
+    solicitada: f.solicitada,
+  }
+  if (f.nota) v.nota = f.nota
+  return v
+}
+
+/** Traduce un error de escritura de visitas (upsert) a un mensaje en español. */
+export function errorDeVisita(e: { code?: string; message: string }): Error {
+  if (e.code === '42501') return new ErrorVisita('No tienes permiso para modificar las visitas.')
+  if (e.code === '23503') return new ErrorVisita('El cliente no existe.')
+  if (e.code === '23514') {
+    if (/visitas_dia_habil/.test(e.message)) return new ErrorVisita('Las rutas son de lunes a viernes.')
+    if (/visitas_nota_largo/.test(e.message)) return new ErrorVisita('La nota puede tener hasta 200 caracteres.')
+    return new ErrorVisita('Hay un dato inválido en la visita.')
+  }
+  if (e.code === '22007' || e.code === '22008') return new ErrorVisita('La fecha no es válida.')
+  return new Error('No se pudo guardar la visita. Revisa tu conexión e inténtalo de nuevo.')
+}
+
+const MENSAJES_ENTREGA = ['Debes iniciar sesión para registrar entregas.', 'No tienes permiso para registrar entregas.']
+
+/**
+ * Traduce un error de entregar_unidades. Las reglas (P0001) y los avisos de permiso propios ya vienen
+ * en español; una violación de RLS genérica, un deadlock o cualquier otro error (red, mensajes en
+ * inglés) se reemplaza por un mensaje en español.
+ */
+export function errorDeEntrega(e: { code?: string; message: string }): Error {
+  if (e.code === 'P0001') return new ErrorEntrega(e.message)
+  if (e.code === '42501') return new ErrorEntrega(MENSAJES_ENTREGA.includes(e.message) ? e.message : MENSAJES_ENTREGA[1])
+  if (e.code === '22P02' || e.code === '22003') return new ErrorEntrega('Revisa los datos: hay un valor que no es válido.')
+  if (e.code === '40P01' || e.code === '40001') {
+    return new ErrorEntrega('Otra persona estaba registrando una entrega de estas mismas líneas. Inténtalo de nuevo.')
+  }
+  return new Error('No se pudo registrar la entrega. Revisa tu conexión e inténtalo de nuevo.')
+}
+
+/** Traduce un error de Storage al subir la foto del documento. */
+function errorDeFoto(e: { message: string; statusCode?: string }): Error {
+  const m = e.message ?? ''
+  if (e.statusCode === '403' || e.statusCode === '401' || /row-level security|unauthorized|not allowed/i.test(m)) {
+    return new ErrorEntrega('No tienes permiso para subir la foto del documento.')
+  }
+  if (e.statusCode === '413' || /too large|maximum allowed size/i.test(m)) return new ErrorEntrega('La foto puede pesar hasta 8 MB.')
+  if (/mime type/i.test(m)) return new ErrorEntrega('La foto debe ser una imagen.')
+  return new Error('No se pudo subir la foto. Revisa tu conexión e inténtalo de nuevo.')
+}
+
+/** Identificador único para el nombre del archivo (crypto.randomUUID solo existe en contextos seguros). */
+function idUnico(): string {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 export function crearSupabaseRepo(url: string, anonKey: string): Repo {
   return crearRepoConCliente(createClient(url, anonKey))
 }
@@ -291,6 +367,70 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
       return () => {
         void sb.removeChannel(canal)
       }
+    },
+    async listarVisitas(fecha) {
+      if (!fechaValida(fecha)) throw new ErrorVisita('La fecha no es válida.')
+      try {
+        const filas = await leerTodas<FilaVisita>((d, h) =>
+          sb.from('visitas').select(COLUMNAS_VISITA).eq('fecha', fecha).order('id').range(d, h),
+        )
+        return filas.map(filaAVisita)
+      } catch {
+        throw new Error('No se pudieron cargar las visitas. Revisa tu conexión.')
+      }
+    },
+    async marcarVisita(fecha, clienteId, confirmada) {
+      validarVisita({ fecha, clienteId, confirmada })
+      // Upsert sobre la restricción única (fecha, cliente_id): solo cambia las columnas enviadas.
+      const { error } = await sb
+        .from('visitas')
+        .upsert({ fecha, cliente_id: clienteId, confirmada }, { onConflict: 'fecha,cliente_id' })
+      if (error) throw errorDeVisita(error)
+    },
+    async agregarVisitaExtra(fecha, clienteId, nota) {
+      const texto = nota?.trim() || null
+      validarVisita({ fecha, clienteId, nota: texto ?? undefined })
+      const { error } = await sb
+        .from('visitas')
+        .upsert({ fecha, cliente_id: clienteId, solicitada: true, nota: texto }, { onConflict: 'fecha,cliente_id' })
+      if (error) throw errorDeVisita(error)
+    },
+    async actualizarSalida(trabajoId, salida) {
+      if (!MODALIDADES.includes(salida)) throw new ErrorTrabajo('La modalidad de salida no es válida.')
+      const { data, error } = await sb.from('trabajos').update({ salida }).eq('id', trabajoId).select('id')
+      if (error) {
+        if (error.code === '42501') throw new ErrorTrabajo('No tienes permiso para cambiar la salida.')
+        throw new Error('No se pudo cambiar la salida. Revisa tu conexión e inténtalo de nuevo.')
+      }
+      // RLS filtra en silencio las filas que no puede tocar: sin filas actualizadas no hubo cambio.
+      if (!data || data.length === 0) {
+        throw new ErrorTrabajo('No se pudo cambiar la salida (el trabajo no existe o no tienes permiso).')
+      }
+    },
+    async entregarUnidades(entregas, documento) {
+      const doc = validarEntradaEntrega(entregas, documento)
+      // Una sola llamada: la base bloquea las líneas en orden fijo y entrega todo o nada.
+      const { error } = await sb.rpc('entregar_unidades', {
+        p_entregas: entregas.map((e) => ({ linea_id: e.lineaId, cantidad: e.cantidad })),
+        p_documento: doc,
+      })
+      if (error) throw errorDeEntrega(error)
+    },
+    async subirFotoDocumento(trabajoId, archivo) {
+      validarFotoDocumento(archivo)
+      const ruta = nombreFotoDocumento(trabajoId, archivo.type, idUnico())
+      const bucket = sb.storage.from('documentos')
+      const subida = await bucket.upload(ruta, archivo, { contentType: archivo.type, upsert: false })
+      if (subida.error) throw errorDeFoto(subida.error as { message: string; statusCode?: string })
+      const { data, error } = await sb.from('trabajos').update({ foto_documento: ruta }).eq('id', trabajoId).select('id')
+      if (error || !data || data.length === 0) {
+        await bucket.remove([ruta]).catch(() => undefined) // no dejar fotos huérfanas (mejor esfuerzo)
+        if (error && error.code !== '42501' && error.code !== 'P0001') {
+          throw new Error('No se pudo asociar la foto al trabajo. Revisa tu conexión e inténtalo de nuevo.')
+        }
+        throw new ErrorEntrega('No se pudo asociar la foto al trabajo (el trabajo no existe o no tienes permiso).')
+      }
+      return ruta
     },
     async listarClientes() {
       try {

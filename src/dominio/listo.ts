@@ -13,6 +13,7 @@ export interface DatosOperacion {
 export interface FilaListo {
   trabajoId: string
   numero: number
+  clienteId: string
   clienteNombre: string
   area: Area
   salida: Modalidad
@@ -73,6 +74,7 @@ export function resumenListo(datos: DatosOperacion): FilaListo[] {
     filas.push({
       trabajoId: t.id,
       numero: t.numero,
+      clienteId: t.clienteId,
       clienteNombre: cliente?.nombre ?? 'Cliente desconocido',
       area: t.area,
       salida: t.salida,

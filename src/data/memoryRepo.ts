@@ -1,6 +1,9 @@
 import type { Repo } from './repo'
-import type { Cliente, Etapa, Linea, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual } from '../dominio/tipos'
-import { ErrorTrabajo, primeraEtapa, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
+import type { Cliente, Etapa, Linea, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
+import { ErrorTrabajo, MODALIDADES, primeraEtapa, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
+import { ErrorEntrega, nombreFotoDocumento, planificarEntrega, validarFotoDocumento } from '../dominio/entrega'
+import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
+import { diaLocal } from '../dominio/fechas'
 import { planificarClientes, planificarProductos } from '../dominio/maestros'
 import {
   ErrorMovimiento,
@@ -23,7 +26,13 @@ export interface MemoryRepoOpciones {
   clientes?: Cliente[]
   recorridos?: Recorrido[]
   productos?: Producto[]
+  visitas?: Visita[]
 }
+
+const GESTION: readonly Rol[] = ['admin', 'secretaria', 'jefe_taller']
+const esGestion = (u: UsuarioActual | null) => !!u && GESTION.includes(u.rol)
+/** Gestión y chofer: los roles de la ruta (§5.4). */
+const esDeRuta = (u: UsuarioActual | null) => esGestion(u) || u?.rol === 'chofer'
 
 /** Repo en memoria; `simularConexion` imita la caída y vuelta del canal en vivo (para pruebas). */
 export type RepoMemoria = Repo & { simularConexion(conectado: boolean): void }
@@ -32,12 +41,14 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
   let actual: UsuarioActual | null = opciones.usuario ?? null
   const cuentas = opciones.cuentas ?? {}
   const etapas = opciones.etapas ?? []
+  // Los trabajos que cambian (guía, salida, foto) se reemplazan en el arreglo, sin tocar los objetos recibidos.
   const trabajos = opciones.trabajos ?? []
   const lineas = opciones.lineas ?? []
   const movimientos: Movimiento[] = [...(opciones.movimientos ?? [])]
   const clientes: Cliente[] = (opciones.clientes ?? []).map((c) => ({ ...c }))
   const recorridos: Recorrido[] = (opciones.recorridos ?? []).map((r) => ({ ...r }))
   const productos: Producto[] = (opciones.productos ?? []).map((p) => ({ ...p }))
+  const visitas: Visita[] = (opciones.visitas ?? []).map((v) => ({ ...v }))
   let siguienteId = 1
   const oyentes = new Set<() => void>()
   const oyentesEstado = new Set<(conectado: boolean) => void>()
@@ -48,6 +59,25 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
     if (actual && !['admin', 'secretaria', 'jefe_taller'].includes(actual.rol)) {
       throw new Error('No tienes permiso para modificar los maestros.')
     }
+  }
+
+  // Igual que RLS de visitas (0007): gestión todo; chofer desde hoy (hora de Chile); el resto nada.
+  // Upsert por (fecha, cliente), como la restricción única de la tabla.
+  function guardarVisita(fecha: string, clienteId: string, cambiar: (v: Visita) => void) {
+    const hoy = diaLocal(new Date().toISOString())
+    if (!esGestion(actual) && !(actual?.rol === 'chofer' && fecha >= hoy)) {
+      throw new ErrorVisita('No tienes permiso para modificar las visitas.')
+    }
+    if (!clientes.some((c) => c.id === clienteId)) throw new ErrorVisita('El cliente no existe.')
+    let v = visitas.find((x) => x.fecha === fecha && x.clienteId === clienteId)
+    if (!v) {
+      v = {
+        id: `vis-${siguienteId++}`, fecha, clienteId, recorridoId: null,
+        confirmada: 'sin_respuesta', requiereConfirmacion: false, solicitada: false,
+      }
+      visitas.push(v)
+    }
+    cambiar(v)
   }
 
   return {
@@ -71,11 +101,13 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       const trabajo = linea && trabajos.find((t) => t.id === linea.trabajoId)
       if (!linea || !trabajo) throw new ErrorMovimiento('La línea no existe.')
       validarCantidad(cantidad)
-      validarEtapasMovimiento(
-        etapas.find((e) => e.id === origenId),
-        etapas.find((e) => e.id === destinoId),
-        trabajo.area,
-      )
+      const origen = etapas.find((e) => e.id === origenId)
+      const destino = etapas.find((e) => e.id === destinoId)
+      validarEtapasMovimiento(origen, destino, trabajo.area)
+      // Como la política movimientos_crear (0007): el chofer solo entrega (de "listo" a la etapa final).
+      if (actual.rol === 'chofer' && !(origen?.esListo && destino?.esFinal)) {
+        throw new ErrorMovimiento('No tienes permiso para mover unidades de esta línea.')
+      }
       validarMovimiento(distribucionPorEtapa(movimientos.filter((m) => m.lineaId === lineaId)), origenId, cantidad)
       const mov: Movimiento = {
         id: `mov-${siguienteId++}`,
@@ -156,6 +188,60 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
     simularConexion(conectado) {
       oyentesEstado.forEach((f) => f(conectado))
       if (conectado) avisar()
+    },
+    async listarVisitas(fecha) {
+      if (!fechaValida(fecha)) throw new ErrorVisita('La fecha no es válida.')
+      if (!esDeRuta(actual)) return []
+      return visitas.filter((v) => v.fecha === fecha).map((v) => ({ ...v }))
+    },
+    async marcarVisita(fecha, clienteId, confirmada) {
+      validarVisita({ fecha, clienteId, confirmada })
+      guardarVisita(fecha, clienteId, (v) => {
+        v.confirmada = confirmada
+      })
+    },
+    async agregarVisitaExtra(fecha, clienteId, nota) {
+      const texto = nota?.trim() || undefined
+      validarVisita({ fecha, clienteId, nota: texto })
+      guardarVisita(fecha, clienteId, (v) => {
+        v.solicitada = true
+        if (texto) v.nota = texto
+        else delete v.nota
+      })
+    },
+    async actualizarSalida(trabajoId, salida) {
+      if (!MODALIDADES.includes(salida)) throw new ErrorTrabajo('La modalidad de salida no es válida.')
+      const i = trabajos.findIndex((t) => t.id === trabajoId)
+      if (i < 0 || !esDeRuta(actual)) {
+        throw new ErrorTrabajo('No se pudo cambiar la salida (el trabajo no existe o no tienes permiso).')
+      }
+      trabajos[i] = { ...trabajos[i], salida }
+      avisar()
+    },
+    // Mismas reglas que entregar_unidades: plan completo (todo o nada) y luego se aplica. Es síncrono
+    // entre planificar y escribir, así que dos entregas simultáneas se serializan como con el bloqueo.
+    async entregarUnidades(entregas, documento) {
+      if (!actual) throw new ErrorEntrega('Debes iniciar sesión para registrar entregas.')
+      if (!esDeRuta(actual)) throw new ErrorEntrega('No tienes permiso para registrar entregas.')
+      const plan = planificarEntrega({ trabajos, lineas, movimientos, etapas }, entregas, documento)
+      const creadoEn = new Date().toISOString()
+      for (const m of plan.movimientos) {
+        movimientos.push({ id: `mov-${siguienteId++}`, ...m, usuarioId: actual.id, creadoEn })
+      }
+      for (const g of plan.guias) {
+        const i = trabajos.findIndex((t) => t.id === g.trabajoId)
+        trabajos[i] = { ...trabajos[i], guiaDespacho: g.guiaDespacho }
+      }
+      avisar()
+    },
+    async subirFotoDocumento(trabajoId, archivo) {
+      if (!esDeRuta(actual)) throw new ErrorEntrega('No tienes permiso para subir la foto del documento.')
+      validarFotoDocumento(archivo)
+      const i = trabajos.findIndex((t) => t.id === trabajoId)
+      if (i < 0) throw new ErrorEntrega('El trabajo no existe.')
+      const ruta = nombreFotoDocumento(trabajoId, archivo.type, `foto-${siguienteId++}`)
+      trabajos[i] = { ...trabajos[i], fotoDocumento: ruta }
+      return ruta
     },
     async listarClientes() {
       return clientes.map((c) => ({ ...c }))

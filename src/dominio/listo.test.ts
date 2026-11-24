@@ -39,7 +39,7 @@ describe('resumenListo', () => {
       ],
     }))
     expect(r).toEqual([{
-      trabajoId: 't1', numero: 7, clienteNombre: 'Imprenta Sur', area: 'afilado', salida: 'cliente',
+      trabajoId: 't1', numero: 7, clienteId: 'c1', clienteNombre: 'Imprenta Sur', area: 'afilado', salida: 'cliente',
       listas: 4, total: 6, entregadas: 0, pendientes: 6, listoDesde: '2026-11-22T15:30:00Z', recorrido: 'Norte', dia: 2,
     }])
   })
