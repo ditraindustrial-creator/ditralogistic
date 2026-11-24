@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { diaLocal } from '../../dominio/fechas'
 import { resumenListo, type FilaListo } from '../../dominio/listo'
 import type { Area } from '../../dominio/tipos'
-import { crearDebounce } from './debounce'
-
-const ESPERA_RECARGA_MS = 400
+import { useDatosEnVivo } from '../useDatosEnVivo'
 
 const DIAS: Record<number, string> = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes' }
 const AREAS: Record<Area, string> = { afilado: 'Afilado', encuadernacion: 'Encuadernación' }
@@ -54,47 +52,17 @@ function agrupar(filas: FilaListo[]): Grupo[] {
 }
 
 export default function Listo({ repo }: { repo: Repo }) {
-  const [filas, setFilas] = useState<(FilaListo & { clienteId: string })[] | null>(null)
-  const [error, setError] = useState('')
+  const { datos, error, conectado } = useDatosEnVivo(repo)
+  const filas = useMemo(() => {
+    if (!datos) return null
+    const clientePorTrabajo = new Map(datos.trabajos.map((t) => [t.id, t.clienteId]))
+    return resumenListo(datos).map((f) => ({ ...f, clienteId: clientePorTrabajo.get(f.trabajoId) ?? '' }))
+  }, [datos])
   const [area, setArea] = useState('')
   const [cliente, setCliente] = useState('')
   const [recorrido, setRecorrido] = useState('')
   const [dia, setDia] = useState('')
   const [soloListas, setSoloListas] = useState(false)
-  const [conectado, setConectado] = useState(true)
-
-  useEffect(() => {
-    let activo = true
-    let pedido = 0
-    async function cargar() {
-      const mio = ++pedido
-      try {
-        const datos = await repo.cargarTodo()
-        if (!activo || mio !== pedido) return // se desmontó, o llegó una carga más nueva
-        const clientePorTrabajo = new Map(datos.trabajos.map((t) => [t.id, t.clienteId]))
-        setFilas(resumenListo(datos).map((f) => ({ ...f, clienteId: clientePorTrabajo.get(f.trabajoId) ?? '' })))
-        setError('')
-      } catch (e) {
-        if (!activo || mio !== pedido) return
-        setError(e instanceof Error ? e.message : 'No se pudo cargar la información.')
-      }
-    }
-    // Los eventos llegan en ráfagas (un movimiento por línea): se juntan en una sola recarga.
-    const recarga = crearDebounce(() => void cargar(), ESPERA_RECARGA_MS)
-    // Primero la suscripción y luego la carga, para no perder cambios entre ambas.
-    const cancelar = repo.suscribirCambios(recarga.llamar, (c) => activo && setConectado(c))
-    void cargar()
-    const alVolver = () => {
-      if (document.visibilityState === 'visible') recarga.llamar()
-    }
-    document.addEventListener('visibilitychange', alVolver)
-    return () => {
-      activo = false
-      recarga.cancelar()
-      document.removeEventListener('visibilitychange', alVolver)
-      cancelar()
-    }
-  }, [repo])
 
   const clientes = useMemo(() => {
     const m = new Map<string, string>()

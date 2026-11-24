@@ -5,6 +5,7 @@ import { puedeVer } from './dominio/permisos'
 import Listo from './pantallas/listo/Listo'
 import Maestros from './pantallas/admin/Maestros'
 import Recepcion from './pantallas/recepcion/Recepcion'
+import Taller from './pantallas/taller/Taller'
 
 const PANTALLAS: { id: Pantalla; titulo: string }[] = [
   { id: 'listo', titulo: 'Qué hay listo' },
@@ -103,6 +104,8 @@ export default function App({ repo }: { repo: Repo }) {
             <div className="mt-4"><Maestros repo={repo} /></div>
           ) : actual.id === 'recepcion' ? (
             <div className="mt-4"><Recepcion repo={repo} usuario={usuario} /></div>
+          ) : actual.id === 'taller' ? (
+            <div className="mt-4"><Taller repo={repo} usuario={usuario} /></div>
           ) : (
             <p className="mt-2 text-slate-600">Próximamente.</p>
           )}
