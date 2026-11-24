@@ -89,3 +89,41 @@ export function lineasEnCurso(datos: DatosOperacion, areas: Area[]): LineaTaller
       a.producto.localeCompare(b.producto, 'es'),
   )
 }
+
+type Distribucion = LineaTaller['distribucion']
+
+/** Origen por defecto: la primera etapa (en orden) con unidades que no sea final. */
+export function origenPorDefecto(distribucion: Distribucion): string {
+  return (distribucion.find((d) => !d.etapa.esFinal) ?? distribucion[0]).etapa.id
+}
+
+/** Destino por defecto: la etapa siguiente del área (o la anterior si el origen es la última). */
+export function destinoPorDefecto(etapasArea: Etapa[], origenId: string): string {
+  const i = etapasArea.findIndex((e) => e.id === origenId)
+  return (etapasArea[i + 1] ?? etapasArea[i - 1] ?? etapasArea[0]).id
+}
+
+export interface SeleccionMovimiento {
+  lineaId: string
+  origenId: string
+  destinoId: string
+  cantidad: string
+}
+
+/**
+ * Ajusta una selección abierta a datos recién cargados: si el origen ya no tiene unidades vuelve
+ * al origen, destino y cantidad por defecto; si tiene menos que la cantidad pedida, la baja al
+ * máximo. Devuelve la misma selección si sigue válida, o null si la línea ya no tiene unidades.
+ */
+export function reconciliarSeleccion<S extends SeleccionMovimiento>(sel: S, distribucion: Distribucion, etapasArea: Etapa[]): S | null {
+  if (distribucion.length === 0) return null
+  const max = distribucion.find((d) => d.etapa.id === sel.origenId)?.unidades ?? 0
+  if (max === 0) {
+    const origenId = origenPorDefecto(distribucion)
+    const todas = distribucion.find((d) => d.etapa.id === origenId)!.unidades
+    return { ...sel, origenId, destinoId: destinoPorDefecto(etapasArea, origenId), cantidad: String(todas) }
+  }
+  const pedida = sel.cantidad.trim() === '' ? NaN : Number(sel.cantidad)
+  if (pedida > max) return { ...sel, cantidad: String(max) }
+  return sel
+}

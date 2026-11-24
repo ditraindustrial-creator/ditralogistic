@@ -31,16 +31,18 @@ function montar(rol: Rol = 'jefe_taller', envolver?: (r: Repo) => Repo) {
       { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null },
       { id: 'c2', nombre: 'Libros del Norte', rut: '2-7', recorridoId: null },
     ],
-    trabajos: [trab('t1', 11, 'c1', 'afilado'), trab('t2', 12, 'c2', 'encuadernacion'), trab('t3', 13, 'c2', 'afilado', true, '2026-11-22T12:00:00Z')],
+    trabajos: [trab('t1', 11, 'c1', 'afilado'), trab('t2', 12, 'c2', 'encuadernacion'), trab('t3', 13, 'c2', 'afilado', true, '2026-11-22T12:00:00Z'), trab('t4', 14, 'c1', 'afilado', false, '2026-11-23T12:00:00Z')],
     lineas: [
       { id: 'l1', trabajoId: 't1', producto: 'Cuchillo', cantidad: 6 },
       { id: 'l2', trabajoId: 't2', producto: 'Libro', cantidad: 3 },
       { id: 'l3', trabajoId: 't3', producto: 'Tijera', cantidad: 2 },
+      { id: 'l4', trabajoId: 't4', producto: 'Sierra', cantidad: 6 },
     ],
     movimientos: [
       mov('m1', 'l1', 6, null, 'a1'), mov('m2', 'l1', 6, 'a1', 'a2'),
       mov('m3', 'l2', 3, null, 'b1'),
       mov('m4', 'l3', 2, null, 'a1'),
+      mov('m5', 'l4', 6, null, 'a1'), mov('m6', 'l4', 6, 'a1', 'a2'), mov('m7', 'l4', 4, 'a2', 'a3'),
     ],
   })
   const repo = envolver ? envolver(base) : base
@@ -154,5 +156,88 @@ describe('Taller', () => {
   it('un rol sin acceso no ve líneas', () => {
     montar('chofer')
     expect(screen.getByRole('alert')).toHaveTextContent('No tienes acceso al taller')
+  })
+
+  describe('línea con unidades en varias etapas (2 En taller, 4 Afilado)', () => {
+    const cant = (fila: HTMLElement) => within(fila).getByLabelText('Cantidad')
+    const boton = (fila: HTMLElement, n: string) => within(fila).getByRole('button', { name: n })
+
+    it('muestra "Desde", elige el origen por defecto y recalcula destino y cantidad al cambiarlo', async () => {
+      montar('jefe_taller')
+      const fila = await abrir('Imprenta Sur', 'Sierra')
+      expect(within(fila).getByLabelText('En taller (2)')).toBeChecked()
+      expect(within(fila).getByLabelText('Afilado (4)')).not.toBeChecked()
+      expect(within(fila).getByLabelText('Afilado', { selector: 'input[name^="destino"]' })).toBeChecked()
+      expect(cant(fila)).toHaveValue('2')
+      await userEvent.click(within(fila).getByLabelText('Afilado (4)'))
+      expect(within(fila).getByLabelText('Listo')).toBeChecked()
+      expect(cant(fila)).toHaveValue('4')
+      expect(within(fila).getByText('Disponibles en esta etapa: 4')).toBeInTheDocument()
+    })
+
+    it('el contador no pasa del máximo ni baja de 1, y "Todas" vuelve al máximo', async () => {
+      montar('jefe_taller')
+      const fila = await abrir('Imprenta Sur', 'Sierra')
+      await userEvent.click(boton(fila, 'Más'))
+      expect(cant(fila)).toHaveValue('2')
+      await userEvent.click(boton(fila, 'Menos'))
+      await userEvent.click(boton(fila, 'Menos'))
+      expect(cant(fila)).toHaveValue('1')
+      await userEvent.click(boton(fila, 'Todas'))
+      expect(cant(fila)).toHaveValue('2')
+    })
+
+    it('confirma en singular y en plural', async () => {
+      const espia = vi.fn()
+      montar('jefe_taller', espiar(espia))
+      const fila = await abrir('Imprenta Sur', 'Sierra')
+      await userEvent.click(boton(fila, 'Menos'))
+      await userEvent.click(boton(fila, 'Mover'))
+      expect(await screen.findByRole('status')).toHaveTextContent('1 unidad pasó a Afilado')
+      expect(espia).toHaveBeenCalledWith('l4', 1, 'a2', 'a3')
+      const otra = await abrir('Imprenta Sur', 'Sierra')
+      await userEvent.click(within(otra).getByLabelText('Afilado (5)'))
+      await userEvent.click(within(otra).getByRole('button', { name: 'Mover' }))
+      expect(await screen.findByRole('status')).toHaveTextContent('5 unidades pasaron a Listo')
+    })
+
+    it('permite mover hacia atrás', async () => {
+      const espia = vi.fn()
+      montar('jefe_taller', espiar(espia))
+      const fila = await abrir('Imprenta Sur', 'Sierra')
+      await userEvent.click(within(fila).getByLabelText('Afilado (4)'))
+      await userEvent.click(within(fila).getByLabelText('En taller', { selector: 'input[name^="destino"]' }))
+      await userEvent.click(boton(fila, 'Mover'))
+      expect(espia).toHaveBeenCalledWith('l4', 4, 'a3', 'a2')
+      await screen.findByRole('status')
+    })
+
+    it('si otro celular vacía el origen elegido, la selección pasa al origen vigente', async () => {
+      const repo = montar('jefe_taller')
+      const fila = await abrir('Imprenta Sur', 'Sierra')
+      await userEvent.click(boton(fila, 'Menos'))
+      await repo.moverUnidades('l4', 2, 'a2', 'a3') // otro dispositivo
+      await waitFor(() => expect(screen.getByText('Disponibles en esta etapa: 6')).toBeInTheDocument())
+      const actual = await tarjeta('Imprenta Sur', 'Sierra')
+      expect(within(actual).queryByText('Desde')).not.toBeInTheDocument() // ya hay una sola etapa de origen
+      expect(cant(actual)).toHaveValue('6')
+      expect(within(actual).getByLabelText('Listo')).toBeChecked()
+    })
+
+    it('si el origen tiene menos unidades que la cantidad, la baja al máximo', async () => {
+      const repo = montar('jefe_taller')
+      const fila = await abrir('Imprenta Sur', 'Sierra')
+      await repo.moverUnidades('l4', 1, 'a2', 'a3')
+      await waitFor(() => expect(cant(fila)).toHaveValue('1'))
+    })
+
+    it('si la línea desaparece, cierra el panel', async () => {
+      const repo = montar('jefe_taller')
+      await abrir('Imprenta Sur', 'Sierra')
+      await repo.moverUnidades('l4', 2, 'a2', 'a5')
+      await repo.moverUnidades('l4', 4, 'a3', 'a5')
+      await waitFor(() => expect(screen.queryByText(/^Sierra · 6$/)).not.toBeInTheDocument())
+      expect(screen.queryByLabelText('Cantidad')).not.toBeInTheDocument()
+    })
   })
 })

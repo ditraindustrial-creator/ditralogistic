@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { ErrorMovimiento, validarMovimiento } from '../../dominio/avance'
 import { puedeVer } from '../../dominio/permisos'
-import { areasDelRol, lineasEnCurso, type LineaTaller } from '../../dominio/taller'
+import { areasDelRol, destinoPorDefecto, lineasEnCurso, origenPorDefecto, reconciliarSeleccion, type LineaTaller } from '../../dominio/taller'
 import type { Area, UsuarioActual } from '../../dominio/tipos'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 
@@ -21,17 +21,6 @@ interface Seleccion {
 
 function unidades(n: number) {
   return `${n} ${n === 1 ? 'unidad' : 'unidades'}`
-}
-
-/** Etapa de origen por defecto: la primera (en orden) con unidades que no sea final. */
-function origenPorDefecto(l: LineaTaller): string {
-  return (l.distribucion.find((d) => !d.etapa.esFinal) ?? l.distribucion[0]).etapa.id
-}
-
-/** Destino por defecto: la etapa siguiente del área (o la anterior si el origen es la última). */
-function destinoPorDefecto(l: LineaTaller, origenId: string): string {
-  const i = l.etapasArea.findIndex((e) => e.id === origenId)
-  return (l.etapasArea[i + 1] ?? l.etapasArea[i - 1] ?? l.etapasArea[0]).id
 }
 
 function disponibles(l: LineaTaller, origenId: string): number {
@@ -70,6 +59,16 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   )
   const lineas = useMemo(() => (datos ? lineasEnCurso(datos, areasVisibles) : null), [datos, areasVisibles])
 
+  // Datos nuevos (p. ej. otro celular movió unidades): la selección abierta se ajusta o se cierra.
+  useEffect(() => {
+    if (!lineas) return
+    setSel((actual) => {
+      if (!actual) return actual
+      const l = lineas.find((x) => x.lineaId === actual.lineaId)
+      return l ? reconciliarSeleccion(actual, l.distribucion, l.etapasArea) : null
+    })
+  }, [lineas])
+
   if (permitidas.length === 0) {
     return <p role="alert" className="text-red-700">No tienes acceso al taller.</p>
   }
@@ -81,12 +80,12 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
       setSel(null)
       return
     }
-    const origenId = origenPorDefecto(l)
-    setSel({ lineaId: l.lineaId, origenId, destinoId: destinoPorDefecto(l, origenId), cantidad: String(disponibles(l, origenId)) })
+    const origenId = origenPorDefecto(l.distribucion)
+    setSel({ lineaId: l.lineaId, origenId, destinoId: destinoPorDefecto(l.etapasArea, origenId), cantidad: String(disponibles(l, origenId)) })
   }
 
   function cambiarOrigen(l: LineaTaller, origenId: string) {
-    setSel({ lineaId: l.lineaId, origenId, destinoId: destinoPorDefecto(l, origenId), cantidad: String(disponibles(l, origenId)) })
+    setSel({ lineaId: l.lineaId, origenId, destinoId: destinoPorDefecto(l.etapasArea, origenId), cantidad: String(disponibles(l, origenId)) })
   }
 
   function ajustar(l: LineaTaller, delta: number) {

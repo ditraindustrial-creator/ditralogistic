@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { areasDelRol, lineasEnCurso } from './taller'
+import { areasDelRol, lineasEnCurso, reconciliarSeleccion } from './taller'
 import type { DatosOperacion } from './listo'
 import type { Etapa, Movimiento, Rol } from './tipos'
 
@@ -70,5 +70,31 @@ describe('lineasEnCurso', () => {
     expect(lineasEnCurso(datos, ['encuadernacion']).map((l) => l.lineaId)).toEqual(['l4'])
     expect(lineasEnCurso(datos, [])).toEqual([])
     expect(lineasEnCurso(datos, ['afilado', 'encuadernacion']).map((l) => l.lineaId)).toEqual(['l2', 'l4', 'l3', 'l1'])
+  })
+})
+
+describe('reconciliarSeleccion', () => {
+  const e = (id: string, orden: number, esFinal = false): Etapa => ({ id, area: 'afilado', orden, nombre: id, esListo: false, esFinal })
+  const etapasArea = [e('a1', 1), e('a2', 2), e('a3', 3), e('a5', 5, true)]
+  const dist = (pares: [string, number][]) => pares.map(([id, unidades]) => ({ etapa: etapasArea.find((x) => x.id === id)!, unidades }))
+  const sel = (origenId: string, destinoId: string, cantidad: string) => ({ lineaId: 'l1', origenId, destinoId, cantidad })
+
+  it('deja igual (misma referencia) lo que sigue siendo válido', () => {
+    const s = sel('a2', 'a3', '2')
+    expect(reconciliarSeleccion(s, dist([['a2', 2], ['a3', 4]]), etapasArea)).toBe(s)
+  })
+  it('si el origen se vació, vuelve al origen por defecto, su destino siguiente y todas las unidades', () => {
+    const r = reconciliarSeleccion(sel('a2', 'a3', '2'), dist([['a3', 4]]), etapasArea)
+    expect(r).toEqual(sel('a3', 'a5', '4'))
+  })
+  it('si el origen tiene menos unidades, ajusta la cantidad al máximo', () => {
+    expect(reconciliarSeleccion(sel('a2', 'a3', '5'), dist([['a2', 3]]), etapasArea)).toEqual(sel('a2', 'a3', '3'))
+  })
+  it('no toca una cantidad vacía o dentro del máximo', () => {
+    const s = sel('a2', 'a3', '')
+    expect(reconciliarSeleccion(s, dist([['a2', 3]]), etapasArea)).toBe(s)
+  })
+  it('devuelve null si la línea ya no tiene unidades', () => {
+    expect(reconciliarSeleccion(sel('a2', 'a3', '2'), [], etapasArea)).toBeNull()
   })
 })
