@@ -95,3 +95,10 @@ export interface UsuarioActual {
   nombre: string
   rol: Rol
 }
+
+export interface Producto {
+  id: string
+  codigo: string
+  nombre: string
+  area: Area
+}

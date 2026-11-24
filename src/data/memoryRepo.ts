@@ -1,5 +1,6 @@
 import type { Repo } from './repo'
-import type { Etapa, Linea, Movimiento, Trabajo, UsuarioActual } from '../dominio/tipos'
+import type { Cliente, Etapa, Linea, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual } from '../dominio/tipos'
+import { planificarClientes, planificarProductos } from '../dominio/maestros'
 import {
   ErrorMovimiento,
   distribucionPorEtapa,
@@ -18,6 +19,9 @@ export interface MemoryRepoOpciones {
   lineas?: Linea[]
   /** Movimientos iniciales (se copian; el repo no modifica el arreglo recibido). */
   movimientos?: Movimiento[]
+  clientes?: Cliente[]
+  recorridos?: Recorrido[]
+  productos?: Producto[]
 }
 
 export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
@@ -27,7 +31,17 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
   const trabajos = opciones.trabajos ?? []
   const lineas = opciones.lineas ?? []
   const movimientos: Movimiento[] = [...(opciones.movimientos ?? [])]
+  const clientes: Cliente[] = (opciones.clientes ?? []).map((c) => ({ ...c }))
+  const recorridos: Recorrido[] = (opciones.recorridos ?? []).map((r) => ({ ...r }))
+  const productos: Producto[] = (opciones.productos ?? []).map((p) => ({ ...p }))
   let siguienteId = 1
+
+  // Sin sesión se permite (fixtures de prueba); con sesión, igual que RLS: admin y gestión.
+  function exigirGestion() {
+    if (actual && !['admin', 'secretaria', 'jefe_taller'].includes(actual.rol)) {
+      throw new Error('No tienes permiso para modificar los maestros.')
+    }
+  }
 
   return {
     async usuarioActual() {
@@ -67,6 +81,47 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
       }
       movimientos.push(mov)
       return mov
+    },
+    async listarClientes() {
+      return clientes.map((c) => ({ ...c }))
+    },
+    async guardarClientes(entrantes) {
+      exigirGestion()
+      const plan = planificarClientes(clientes, entrantes)
+      for (const a of plan.actualizaciones) Object.assign(clientes.find((c) => c.id === a.id)!, a.cambios)
+      for (const n of plan.nuevos) clientes.push({ ...n, id: `cli-${siguienteId++}`, recorridoId: null })
+      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length }
+    },
+    async listarRecorridos() {
+      return recorridos.map((r) => ({ ...r }))
+    },
+    async guardarRecorrido(r) {
+      exigirGestion()
+      const existente = r.id ? recorridos.find((x) => x.id === r.id) : undefined
+      if (existente) {
+        Object.assign(existente, r)
+        return { ...existente }
+      }
+      const nuevo: Recorrido = { ...r, id: r.id ?? `rec-${siguienteId++}` }
+      recorridos.push(nuevo)
+      return { ...nuevo }
+    },
+    async asignarRecorrido(clienteId, recorridoId) {
+      exigirGestion()
+      const c = clientes.find((x) => x.id === clienteId)
+      if (!c) throw new Error('El cliente no existe.')
+      if (recorridoId !== null && !recorridos.some((r) => r.id === recorridoId)) throw new Error('El recorrido no existe.')
+      c.recorridoId = recorridoId
+    },
+    async listarProductos() {
+      return productos.map((p) => ({ ...p }))
+    },
+    async guardarProductos(entrantes) {
+      exigirGestion()
+      const plan = planificarProductos(productos, entrantes)
+      for (const a of plan.actualizaciones) Object.assign(productos.find((p) => p.id === a.id)!, a.cambios)
+      for (const n of plan.nuevos) productos.push({ ...n, id: `prod-${siguienteId++}` })
+      return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length }
     },
   }
 }

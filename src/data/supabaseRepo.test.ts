@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { filaAMovimiento, errorDeMovimiento } from './supabaseRepo'
+import { filaAMovimiento, errorDeMovimiento, filaACliente, filaARecorrido, filaAProducto, errorDeMaestros } from './supabaseRepo'
 import { ErrorMovimiento } from '../dominio/avance'
 
 describe('filaAMovimiento', () => {
@@ -38,5 +38,26 @@ describe('errorDeMovimiento', () => {
     const e = errorDeMovimiento({ code: '08006', message: 'connection failure' })
     expect(e).not.toBeInstanceOf(ErrorMovimiento)
     expect(e.message).toBe('No se pudo registrar el movimiento. Revisa tu conexión e inténtalo de nuevo.')
+  })
+})
+
+describe('maestros: filas de la base a tipos', () => {
+  it('cliente: null pasa a ausente y el recorrido se conserva', () => {
+    expect(filaACliente({ id: 'c', nombre: 'A', rut: '1-9', contacto: null, direccion: 'Calle', recorrido_id: null })).toEqual({
+      id: 'c', nombre: 'A', rut: '1-9', direccion: 'Calle', recorridoId: null,
+    })
+  })
+  it('recorrido y producto', () => {
+    expect(filaARecorrido({ id: 'r', nombre: 'Lunes', dia: 1, camioneta: 'A', lejano: true })).toEqual({
+      id: 'r', nombre: 'Lunes', dia: 1, camioneta: 'A', lejano: true,
+    })
+    expect(filaAProducto({ id: 'p', codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado' })).toEqual({
+      id: 'p', codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado',
+    })
+  })
+  it('errorDeMaestros traduce permisos, duplicados y otros', () => {
+    expect(errorDeMaestros({ code: '42501', message: 'rls' }).message).toBe('No tienes permiso para modificar los maestros.')
+    expect(errorDeMaestros({ code: '23505', message: 'dup' }).message).toMatch(/Ya existe/)
+    expect(errorDeMaestros({ message: 'x' }).message).toMatch(/No se pudo guardar/)
   })
 })

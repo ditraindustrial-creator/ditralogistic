@@ -20,6 +20,13 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: 'Administración' })).toBeInTheDocument()
   })
 
+  it('Administración abre los maestros', async () => {
+    const repo = crearMemoryRepo({ usuario: { id: 'u2', nombre: 'Ana', rol: 'admin' } })
+    render(<App repo={repo} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Administración' }))
+    expect(await screen.findByRole('tab', { name: 'Recorridos' })).toBeInTheDocument()
+  })
+
   it('sin sesión muestra login y entra con credenciales válidas', async () => {
     const repo = crearMemoryRepo({
       cuentas: { 'p@x.cl': { clave: 'abc', usuario: { id: 'u1', nombre: 'Pedro', rol: 'chofer' } } },
