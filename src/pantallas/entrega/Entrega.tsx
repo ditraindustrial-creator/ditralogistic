@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { ErrorEntrega, validarEntradaEntrega, type Entrega as EntregaDatos, type LineaEntregable } from '../../dominio/entrega'
-import FotoDocumento from './FotoDocumento'
 
 const ERROR_GENERICO = 'No se pudo registrar la entrega. Revisa tu conexión e inténtalo de nuevo.'
 
@@ -22,7 +21,7 @@ const aNumero = (s: string) => (s.trim() === '' ? NaN : Number(s))
 /**
  * Flujo de entrega, compartido por la ruta, la hoja del chofer y el taller: se eligen líneas y
  * cantidades (nunca más de lo listo), se anota el N° de documento (guía o factura) y se llama una
- * vez a `entregarUnidades`. Tras entregar ofrece, sin obligar, adjuntar la foto del documento firmado.
+ * vez a `entregarUnidades`.
  */
 export default function Entrega({
   repo, lineas, titulo, alTerminar, alCerrar, cantidadesIniciales,
@@ -100,15 +99,6 @@ export default function Entrega({
         <p role="status" className="text-xl font-bold text-teal-800">
           Entrega registrada: {unidades(hecho.unidades)} · Guía {hecho.documento}
         </p>
-        <p className="text-slate-600">Si tienes el documento firmado, puedes adjuntar una foto. No es obligatorio.</p>
-        <ul className="flex flex-col gap-3">
-          {hecho.trabajos.map((t) => (
-            <li key={t.trabajoId} className="flex flex-col gap-2">
-              <span className="font-semibold">Trabajo N.º {t.numero}</span>
-              <FotoDocumento repo={repo} trabajoId={t.trabajoId} numero={t.numero} />
-            </li>
-          ))}
-        </ul>
         <button type="button" className={botonGrande} onClick={alCerrar}>Listo</button>
       </div>
     )

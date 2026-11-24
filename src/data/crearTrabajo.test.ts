@@ -80,7 +80,7 @@ describe('supabaseRepo.crearTrabajo', () => {
   const fila = {
     id: 't-1', numero: 41, cliente_id: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente',
     recibido_en: '2026-11-24T10:00:00Z', guia_retiro: 'G-1', guia_despacho: null, factura: null, transporte: null,
-    urgente: true, notas: null, foto_documento: null,
+    urgente: true, notas: null,
   }
   function falso(respuesta: { data: unknown; error: { code?: string; message: string } | null }) {
     const llamadas: { fn: string; args: unknown }[] = []

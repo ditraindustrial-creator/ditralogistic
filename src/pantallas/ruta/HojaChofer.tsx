@@ -6,7 +6,6 @@ import { resumenListo } from '../../dominio/listo'
 import { armarRuta, fechaValida, type Parada } from '../../dominio/ruta'
 import type { Cliente, UsuarioActual } from '../../dominio/tipos'
 import Entrega from '../entrega/Entrega'
-import FotoDocumento from '../entrega/FotoDocumento'
 import Recepcion from '../recepcion/Recepcion'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import { agruparParadas, ESTADO_VISITA, fechaLarga, textoProductos, useVisitas } from './comun'
@@ -59,12 +58,7 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
                 return (
                   <li key={f.trabajoId} className="flex flex-col gap-2 rounded bg-slate-50 p-3">
                     <span className="text-lg">N.º {f.numero} · {datos ? textoProductos(datos, f.trabajoId) : `${f.listas} listas`}</span>
-                    {t?.guiaDespacho && (
-                      <>
-                        <span className="text-slate-700">Guía: {t.guiaDespacho}</span>
-                        <FotoDocumento repo={repo} trabajoId={f.trabajoId} numero={f.numero} rutaActual={t.fotoDocumento} alCambiar={() => void recargar()} />
-                      </>
-                    )}
+                    {t?.guiaDespacho && <span className="text-slate-700">Guía: {t.guiaDespacho}</span>}
                   </li>
                 )
               })}

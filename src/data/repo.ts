@@ -70,14 +70,4 @@ export interface Repo {
    * más de lo que está listo. Lanza ErrorEntrega (en español) si no se puede.
    */
   entregarUnidades(entregas: Entrega[], documento: string): Promise<void>
-  /**
-   * Sube la foto (opcional) del documento firmado al bucket `documentos`, en la carpeta del trabajo,
-   * y la asocia al trabajo. Solo imágenes de hasta 8 MB. Devuelve la ruta guardada.
-   */
-  subirFotoDocumento(trabajoId: string, archivo: File): Promise<string>
-  /**
-   * URL temporal (unos 5 minutos) para abrir una foto ya subida, a partir de la ruta guardada en
-   * `Trabajo.fotoDocumento`. Lanza un error en español si no existe o no se tiene permiso.
-   */
-  urlFotoDocumento(ruta: string): Promise<string>
 }

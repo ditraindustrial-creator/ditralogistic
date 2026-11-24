@@ -3,8 +3,6 @@ import {
   agregarDocumento,
   ErrorEntrega,
   planificarEntrega,
-  validarFotoDocumento,
-  nombreFotoDocumento,
   unidadesListasPorLinea,
   lineasEntregables,
   type DatosEntrega,
@@ -130,36 +128,6 @@ describe('agregarDocumento', () => {
     expect(agregarDocumento('100, 4521', '4521')).toBe('100, 4521')
     expect(agregarDocumento('100,4521', '4521')).toBe('100,4521')
     expect(agregarDocumento('14521', '4521')).toBe('14521, 4521')
-  })
-})
-
-const TIPO_NO_VALIDO = 'La foto debe ser JPG, PNG, WebP o HEIC.'
-
-describe('foto del documento', () => {
-  it('acepta imágenes de hasta 8 MB', () => {
-    expect(() => validarFotoDocumento({ type: 'image/jpeg', size: 8 * 1024 * 1024 })).not.toThrow()
-  })
-  it('acepta solo jpeg, png, webp y heic (sin SVG ni otros formatos)', () => {
-    for (const type of ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'IMAGE/JPEG']) {
-      expect(() => validarFotoDocumento({ type, size: 10 })).not.toThrow()
-    }
-    for (const type of ['image/svg+xml', 'image/gif', 'image/tiff', 'image/*', 'image/jpeg2', 'text/html', 'image/png; charset=x']) {
-      expect(error(() => validarFotoDocumento({ type, size: 10 }))).toBe(TIPO_NO_VALIDO)
-    }
-  })
-  it('rechaza lo que no es imagen, archivos vacíos y los de más de 8 MB', () => {
-    expect(error(() => validarFotoDocumento({ type: 'application/pdf', size: 10 }))).toBe(TIPO_NO_VALIDO)
-    expect(error(() => validarFotoDocumento({ type: '', size: 10 }))).toBe(TIPO_NO_VALIDO)
-    expect(error(() => validarFotoDocumento({ type: 'image/png', size: 0 }))).toBe('El archivo de la foto está vacío.')
-    expect(error(() => validarFotoDocumento({ type: 'image/png', size: 8 * 1024 * 1024 + 1 }))).toBe(
-      'La foto puede pesar hasta 8 MB.',
-    )
-  })
-  it('el nombre del archivo se genera dentro de la carpeta del trabajo, sin usar el nombre original', () => {
-    expect(nombreFotoDocumento('t1', 'image/jpeg', 'abc')).toBe('t1/abc.jpg')
-    expect(nombreFotoDocumento('t1', 'image/png', 'x')).toBe('t1/x.png')
-    expect(nombreFotoDocumento('t1', 'image/svg+xml', 'x')).toBe('t1/x.svgxml')
-    expect(nombreFotoDocumento('t1', 'image/', 'x')).toBe('t1/x.img')
   })
 })
 

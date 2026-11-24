@@ -59,7 +59,6 @@ export interface Trabajo {
   transporte?: string
   urgente: boolean
   notas?: string
-  fotoDocumento?: string
 }
 
 export interface Cliente {

@@ -1,11 +1,10 @@
 -- Ruta de mañana y hoja del chofer (spec §5.3 pantallas 4 y 5, §5.4, §7).
 --   * entregar_unidades(jsonb, text): entrega (todo o nada) unidades listas de una o varias líneas,
 --     moviéndolas a la etapa final del área y anotando el N° de guía o factura en el trabajo.
---   * Límites del chofer: de un trabajo solo cambia salida, guía de despacho y foto del documento;
+--   * Límites del chofer: de un trabajo solo cambia salida y guía de despacho;
 --     solo agrega líneas a trabajos propios, de hoy y aún sin movimientos (crear_trabajo); y solo
 --     registra recepciones (origen NULL) o entregas (de una etapa "listo" a una final).
 --   * visitas: una por cliente y día hábil (upsert), recorrido opcional, permisos según §5.4.
---   * Storage: bucket privado `documentos` para la foto (opcional) del documento firmado.
 
 -- Día calendario de hoy en Chile (las rutas y "hoy" se cuentan en hora local).
 create function hoy_chile() returns date
@@ -22,20 +21,16 @@ create policy trabajos_crear on trabajos for insert to authenticated
   with check (es_gestion() or (rol_actual() = 'chofer' and creado_por = auth.uid()));
 
 -- Fuera de gestión (en la práctica el chofer, el único otro rol con permiso de update por RLS) solo
--- se cambian salida, guia_despacho y foto_documento. Se compara la fila completa menos esos campos,
+-- se cambian salida y guia_despacho. Se compara la fila completa menos esos campos,
 -- así una columna nueva queda protegida por defecto. Sin sesión (migraciones, service role, borrados
--- en cascada de auth.users) no se limita. La foto, para todos, debe quedar en la carpeta del trabajo.
+-- en cascada de auth.users) no se limita.
 create function trabajos_limitar_campos() returns trigger
   language plpgsql set search_path = public, pg_temp as $$
 begin
-  if new.foto_documento is distinct from old.foto_documento and new.foto_documento is not null
-     and new.foto_documento !~ ('^' || new.id::text || '/[^/]+$') then
-    raise exception 'La foto debe estar en la carpeta del trabajo.' using errcode = 'P0001';
-  end if;
   if auth.uid() is not null and not es_gestion()
-     and (to_jsonb(new) - array['salida', 'guia_despacho', 'foto_documento'])
-         is distinct from (to_jsonb(old) - array['salida', 'guia_despacho', 'foto_documento']) then
-    raise exception 'Solo puedes cambiar la salida, la guía de despacho y la foto del documento de un trabajo.'
+     and (to_jsonb(new) - array['salida', 'guia_despacho'])
+         is distinct from (to_jsonb(old) - array['salida', 'guia_despacho']) then
+    raise exception 'Solo puedes cambiar la salida y la guía de despacho de un trabajo.'
       using errcode = '42501';
   end if;
   return new;
@@ -367,32 +362,3 @@ create policy visitas_chofer_crea on visitas for insert to authenticated
 create policy visitas_chofer_marca on visitas for update to authenticated
   using (rol_actual() = 'chofer' and fecha >= hoy_chile())
   with check (rol_actual() = 'chofer' and fecha >= hoy_chile());
-
--- =============================================================================================
--- Storage: foto del documento firmado (opcional). Objetos en `documentos/<trabajo_id>/<archivo>`;
--- trabajos.foto_documento guarda esa ruta (sin el nombre del bucket).
--- =============================================================================================
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-  values ('documentos', 'documentos', false, 8388608, array['image/*'])
-  on conflict (id) do nothing;
-
--- Chofer y gestión (§5.4), y solo dentro de la carpeta de un trabajo que existe (un nivel).
-create function puede_usar_documentos(p_nombre text) returns boolean
-  language plpgsql stable security definer set search_path = public, pg_temp as $$
-declare
-  v_carpetas text[] := storage.foldername(p_nombre);
-begin
-  if not (es_gestion() or rol_actual() = 'chofer') then return false; end if;
-  if coalesce(array_length(v_carpetas, 1), 0) <> 1
-     or v_carpetas[1] !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
-    return false;
-  end if;
-  return exists (select 1 from trabajos where id = v_carpetas[1]::uuid);
-end $$;
-revoke execute on function puede_usar_documentos(text) from public;
-grant execute on function puede_usar_documentos(text) to authenticated;
-
-create policy documentos_subir on storage.objects for insert to authenticated
-  with check (bucket_id = 'documentos' and puede_usar_documentos(name));
-create policy documentos_ver on storage.objects for select to authenticated
-  using (bucket_id = 'documentos' and puede_usar_documentos(name));

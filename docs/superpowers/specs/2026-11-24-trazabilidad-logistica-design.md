@@ -106,7 +106,7 @@ Detalles visuales, nombres exactos de campos, estructura de carpetas, pruebas, y
 
 ## 7. Respuestas del dueño y pendientes
 
-**Resuelto: prueba de entrega.** La prueba de entrega es el documento de Ramaflex (guía de despacho o factura) firmado en papel por quien recibe. La app NO incluye firma digital. El chofer marca "entregado" y anota el número de documento. [mi decisión] Botón opcional para fotografiar el documento firmado y asociarlo al trabajo; nunca obligatorio.
+**Resuelto: prueba de entrega.** La prueba de entrega es el documento de Ramaflex (guía de despacho o factura) firmado en papel por quien recibe. La app NO incluye firma digital. El chofer marca "entregado" y anota el número de documento. La app guarda solo ese número; no hay foto del documento firmado: la prueba es el papel.
 
 **Resuelto: avisos de retiro.** La mayoría de los recorridos se hacen sin aviso: los sectores están asignados y las imprentas están cerca, así que el chofer pasa y registra en el lugar lo que retira. A veces el cliente pide una visita o llegada. En recorridos lejanos se pregunta el día antes por WhatsApp si hay retiro, y el cliente confirma.
 

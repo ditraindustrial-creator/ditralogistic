@@ -30,7 +30,6 @@ export interface PlanEntrega {
 }
 
 export const DOCUMENTO_MAXIMO = 40
-export const FOTO_MAXIMA_BYTES = 8 * 1024 * 1024
 
 const largo = (s: string) => [...s].length
 const comparar = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
@@ -117,18 +116,6 @@ export function planificarEntrega(datos: DatosEntrega, entregas: Entrega[], docu
   return plan
 }
 
-/** Tipos de imagen aceptados para la foto (sin SVG: puede llevar scripts). Igual que el bucket `documentos` (0008). */
-export const TIPOS_FOTO_DOCUMENTO: readonly string[] = ['image/jpeg', 'image/png', 'image/webp', 'image/heic']
-
-/** Lanza ErrorEntrega si el archivo no sirve como foto del documento firmado (JPG, PNG, WebP o HEIC, hasta 8 MB). */
-export function validarFotoDocumento(archivo: { type: string; size: number }): void {
-  if (!TIPOS_FOTO_DOCUMENTO.includes((archivo.type ?? '').toLowerCase())) {
-    throw new ErrorEntrega('La foto debe ser JPG, PNG, WebP o HEIC.')
-  }
-  if (!(archivo.size > 0)) throw new ErrorEntrega('El archivo de la foto está vacío.')
-  if (archivo.size > FOTO_MAXIMA_BYTES) throw new ErrorEntrega('La foto puede pesar hasta 8 MB.')
-}
-
 /**
  * Unidades listas por línea de un trabajo (hoy, en etapas "listo"), solo las líneas con algo listo.
  * Es lo que la pantalla ofrece entregar: el tope de cada línea coincide con el que exige la base.
@@ -166,14 +153,4 @@ export function lineasEntregables(datos: DatosEntrega, trabajoIds: string[]): Li
     if (numero === undefined) return []
     return unidadesListasPorLinea(datos, trabajoId).map((l) => ({ ...l, trabajoId, numero }))
   })
-}
-
-/**
- * Ruta del objeto en el bucket `documentos`: `<trabajoId>/<único>.<ext>`. No usa el nombre original
- * del archivo (puede traer caracteres raros o datos personales); la extensión sale del tipo.
- */
-export function nombreFotoDocumento(trabajoId: string, tipo: string, unico: string): string {
-  const sub = (tipo.split('/')[1] ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
-  const ext = sub === 'jpeg' ? 'jpg' : sub || 'img'
-  return `${trabajoId}/${unico}.${ext}`
 }

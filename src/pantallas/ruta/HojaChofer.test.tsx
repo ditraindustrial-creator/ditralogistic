@@ -142,30 +142,14 @@ describe('HojaChofer', () => {
       expect(await tarjeta('Libros del Norte')).toHaveTextContent('Guía: 4521')
     })
 
-    it('se puede terminar sin foto: la foto nunca se pide', async () => {
-      const subir = vi.fn()
-      montar({ dosRecorridos: false, envolver: (r) => ({ ...r, subirFotoDocumento: (...a) => (subir(...a), r.subirFotoDocumento(...a)) }) })
+    it('al terminar, Listo cierra el panel y la parada ya no aparece', async () => {
+      montar({ dosRecorridos: false })
       await userEvent.click(within(await tarjeta('Imprenta Sur')).getByRole('button', { name: 'Entregar a Imprenta Sur' }))
       await userEvent.type(screen.getByLabelText(/N° de documento/), '77')
       await userEvent.click(screen.getByRole('button', { name: 'Entregar' }))
       expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 5 unidades · Guía 77')
       await userEvent.click(screen.getByRole('button', { name: 'Listo' }))
-      expect(subir).not.toHaveBeenCalled()
       await waitFor(() => expect(screen.queryByRole('heading', { name: 'Imprenta Sur' })).not.toBeInTheDocument())
-    })
-
-    it('si la foto falla, la entrega sigue registrada y se avisa en español', async () => {
-      montar({ dosRecorridos: false, envolver: (r) => ({ ...r, subirFotoDocumento: () => Promise.reject(new Error('Failed to fetch')) }) })
-      await userEvent.click(within(await tarjeta('Imprenta Sur')).getByRole('button', { name: 'Entregar a Imprenta Sur' }))
-      await userEvent.type(screen.getByLabelText(/N° de documento/), '77')
-      await userEvent.click(screen.getByRole('button', { name: 'Entregar' }))
-      await screen.findByRole('status')
-      await userEvent.upload(
-        screen.getByLabelText('Archivo de la foto del documento del trabajo 11'),
-        new File([new Uint8Array([1])], 'a.jpg', { type: 'image/jpeg' }),
-      )
-      expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo adjuntar la foto. La entrega ya quedó registrada')
-      expect(screen.getByRole('status')).toHaveTextContent('Entrega registrada: 5 unidades · Guía 77')
     })
 
     it('un rechazo del servidor se muestra en español y no cierra el panel', async () => {
@@ -194,25 +178,14 @@ describe('HojaChofer', () => {
     })
   })
 
-  describe('foto del documento en la tarjeta', () => {
-    it('un trabajo ya entregado en parte permite adjuntar y luego ver la foto', async () => {
-      const abrir = vi.fn()
+  describe('guía en la tarjeta', () => {
+    it('un trabajo ya entregado en parte muestra su guía; uno sin entregas no', async () => {
       montar({
         dosRecorridos: false,
         trabajos: [trab('t1', 11, 'c1'), trab('t2', 12, 'c2', { guiaDespacho: '100' }), trab('t3', 13, 'c3')],
-        envolver: (r) => ({ ...r, urlFotoDocumento: (...a) => (abrir(...a), r.urlFotoDocumento(...a)) }),
       })
-      const c2 = await tarjeta('Libros del Norte')
-      expect(c2).toHaveTextContent('Guía: 100')
-      expect(within(await tarjeta('Imprenta Sur')).queryByRole('button', { name: /foto/i })).not.toBeInTheDocument()
-      await userEvent.upload(
-        within(c2).getByLabelText('Archivo de la foto del documento del trabajo 12'),
-        new File([new Uint8Array([1, 2])], 'g.png', { type: 'image/png' }),
-      )
-      expect(await within(c2).findByText('Foto adjuntada.')).toBeInTheDocument()
-      await userEvent.click(within(c2).getByRole('button', { name: 'Ver foto del documento' }))
-      expect(await within(c2).findByRole('img', { name: 'Foto del documento del trabajo 12' })).toHaveAttribute('src', expect.stringMatching(/^data:image\/png/))
-      expect(abrir).toHaveBeenCalledTimes(1)
+      expect(await tarjeta('Libros del Norte')).toHaveTextContent('Guía: 100')
+      expect(await tarjeta('Imprenta Sur')).not.toHaveTextContent('Guía:')
     })
   })
 

@@ -50,8 +50,7 @@ create table trabajos (
   factura text,
   transporte text,
   urgente boolean not null default false,
-  notas text,
-  foto_documento text
+  notas text
 );
 
 create table lineas (

@@ -168,42 +168,13 @@ describe('Entrega', () => {
     await screen.findByRole('status')
   })
 
-  it('la foto es opcional: se puede terminar sin adjuntarla', async () => {
-    const subir = vi.fn()
-    const { alCerrar } = montar((r) => ({ ...r, subirFotoDocumento: (...a) => (subir(...a), r.subirFotoDocumento(...a)) }))
+  it('tras entregar muestra la confirmación y Listo cierra el panel', async () => {
+    const { alCerrar } = montar()
     await userEvent.type(doc(), '4521')
     await userEvent.click(entregar())
-    await screen.findByRole('status')
-    expect(screen.getByRole('button', { name: 'Adjuntar foto del documento firmado' })).toBeInTheDocument()
+    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 6 unidades · Guía 4521')
     await userEvent.click(screen.getByRole('button', { name: 'Listo' }))
     expect(alCerrar).toHaveBeenCalledTimes(1)
-    expect(subir).not.toHaveBeenCalled()
-  })
-
-  it('adjunta la foto después de entregar', async () => {
-    const subir = vi.fn()
-    montar((r) => ({ ...r, subirFotoDocumento: (...a) => (subir(...a), r.subirFotoDocumento(...a)) }))
-    await userEvent.type(doc(), '4521')
-    await userEvent.click(entregar())
-    await screen.findByRole('status')
-    const archivo = new File([new Uint8Array([1, 2])], 'guia.jpg', { type: 'image/jpeg' })
-    await userEvent.upload(screen.getByLabelText('Archivo de la foto del documento del trabajo 11'), archivo)
-    expect(await screen.findByText('Foto adjuntada.')).toBeInTheDocument()
-    expect(subir).toHaveBeenCalledWith('t1', archivo)
-  })
-
-  it('si la foto falla, la entrega sigue registrada y el mensaje está en español', async () => {
-    montar((r) => ({ ...r, subirFotoDocumento: () => Promise.reject(new Error('Failed to fetch')) }))
-    await userEvent.type(doc(), '4521')
-    await userEvent.click(entregar())
-    await screen.findByRole('status')
-    await userEvent.upload(
-      screen.getByLabelText('Archivo de la foto del documento del trabajo 11'),
-      new File([new Uint8Array([1])], 'a.jpg', { type: 'image/jpeg' }),
-    )
-    const item = screen.getByText('Trabajo N.º 11').closest('li')!
-    expect(await within(item).findByRole('alert')).toHaveTextContent('No se pudo adjuntar la foto. La entrega ya quedó registrada; puedes intentarlo de nuevo.')
-    expect(screen.getByRole('status')).toHaveTextContent('Entrega registrada: 6 unidades · Guía 4521')
   })
 
   it('sin unidades listas avisa y no ofrece entregar', () => {

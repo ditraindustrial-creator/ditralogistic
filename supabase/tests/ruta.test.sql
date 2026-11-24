@@ -1,4 +1,4 @@
--- Pruebas de 0007_ruta.sql: entregar_unidades, límites del chofer, visitas y Storage de documentos.
+-- Pruebas de 0007_ruta.sql: entregar_unidades, límites del chofer y visitas.
 -- Compatible con pgTAP y con el shim local (scripts/sql-local/pgtap_shim.sql).
 --
 -- Concurrencia (pruebas 1-4): dblink abre dos conexiones reales; A mantiene su entrega abierta y B
@@ -9,7 +9,7 @@
 \pset format unaligned
 
 begin;
-select plan(97);
+select plan(85);
 
 select id as recibido from etapas where area = 'afilado' and nombre = 'Recibido' \gset
 select id as taller from etapas where area = 'afilado' and nombre = 'En taller' \gset
@@ -319,27 +319,22 @@ select is(array[agregar_documento(null, '1'), agregar_documento(' ', '1'), agreg
 -- ===================== Límites del chofer sobre trabajos y líneas =====================
 select pg_temp.como(:'chofer') \g /dev/null
 select throws_ok($q$update trabajos set urgente = true where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  '42501', 'Solo puedes cambiar la salida, la guía de despacho y la foto del documento de un trabajo.',
+  '42501', 'Solo puedes cambiar la salida y la guía de despacho de un trabajo.',
   'el chofer no cambia la marca de urgente');
 select throws_ok($q$update trabajos set notas = 'x' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  '42501', 'Solo puedes cambiar la salida, la guía de despacho y la foto del documento de un trabajo.',
+  '42501', 'Solo puedes cambiar la salida y la guía de despacho de un trabajo.',
   'el chofer no cambia las notas');
 select throws_ok($q$update trabajos set cliente_id = 'c0000000-0000-0000-0000-000000000702' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  '42501', 'Solo puedes cambiar la salida, la guía de despacho y la foto del documento de un trabajo.',
+  '42501', 'Solo puedes cambiar la salida y la guía de despacho de un trabajo.',
   'el chofer no cambia el cliente');
 select throws_ok($q$update trabajos set creado_por = 'a0000000-0000-0000-0000-000000000702' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  '42501', 'Solo puedes cambiar la salida, la guía de despacho y la foto del documento de un trabajo.',
+  '42501', 'Solo puedes cambiar la salida y la guía de despacho de un trabajo.',
   'el chofer no se adueña de un trabajo');
-select lives_ok($q$update trabajos set salida = 'cliente', guia_despacho = 'G-9',
-    foto_documento = 'd0000000-0000-0000-0000-000000000701/foto.jpg' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  'el chofer sí cambia salida, guía de despacho y foto del documento');
-select is((select row(salida, guia_despacho, foto_documento)::text from trabajos where id = 'd0000000-0000-0000-0000-000000000701'),
-  row('cliente'::modalidad, 'G-9', 'd0000000-0000-0000-0000-000000000701/foto.jpg')::text, 'los tres campos quedaron guardados');
-select throws_ok($q$update trabajos set foto_documento = 'd0000000-0000-0000-0000-000000000702/foto.jpg' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  'P0001', 'La foto debe estar en la carpeta del trabajo.', 'la foto no puede apuntar a la carpeta de otro trabajo');
+select lives_ok($q$update trabajos set salida = 'cliente', guia_despacho = 'G-9' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
+  'el chofer sí cambia salida y guía de despacho');
+select is((select row(salida, guia_despacho)::text from trabajos where id = 'd0000000-0000-0000-0000-000000000701'),
+  row('cliente'::modalidad, 'G-9')::text, 'los dos campos quedaron guardados');
 select pg_temp.como(:'sec') \g /dev/null
-select throws_ok($q$update trabajos set foto_documento = 'foto.jpg' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  'P0001', 'La foto debe estar en la carpeta del trabajo.', 'tampoco para gestión');
 select lives_ok($q$update trabajos set urgente = true, notas = 'revisar', salida = 'ruta_propia' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
   'la secretaria sigue editando cualquier campo');
 select pg_temp.como(:'jefe') \g /dev/null
@@ -445,32 +440,6 @@ with u as (delete from visitas where cliente_id = 'c0000000-0000-0000-0000-00000
 select is((select count(*) from u), 1::bigint, 'el jefe de taller gestiona visitas (borra la parada extra)');
 with u as (update visitas set confirmada = 'no' where fecha = :'pasado' returning 1)
 select is((select count(*) from u), 1::bigint, 'gestión sí corrige visitas pasadas');
-reset role;
-
--- ===================== Storage: bucket documentos =====================
-select is((select row(public, file_size_limit, allowed_mime_types)::text from storage.buckets where id = 'documentos'),
-  row(false, 8388608::bigint, array['image/jpeg', 'image/png', 'image/webp', 'image/heic'])::text,
-  'bucket documentos privado, hasta 8 MB, solo JPG, PNG, WebP y HEIC (sin SVG)');
-insert into storage.buckets (id, name) values ('otro', 'otro');
-select pg_temp.como(:'chofer') \g /dev/null
-select lives_ok($q$insert into storage.objects (bucket_id, name) values ('documentos', 'd0000000-0000-0000-0000-000000000701/a.jpg')$q$,
-  'el chofer sube la foto a la carpeta del trabajo');
-select throws_ok($q$insert into storage.objects (bucket_id, name) values ('documentos', 'd0000000-0000-0000-0000-0000000007ff/a.jpg')$q$,
-  '42501', null, 'no en la carpeta de un trabajo que no existe');
-select throws_ok($q$insert into storage.objects (bucket_id, name) values ('documentos', 'cualquier/a.jpg')$q$,
-  '42501', null, 'no en una carpeta que no es un trabajo');
-select throws_ok($q$insert into storage.objects (bucket_id, name) values ('documentos', 'a.jpg')$q$,
-  '42501', null, 'no fuera de una carpeta');
-select throws_ok($q$insert into storage.objects (bucket_id, name) values ('documentos', 'd0000000-0000-0000-0000-000000000701/x/a.jpg')$q$,
-  '42501', null, 'no en subcarpetas');
-select throws_ok($q$insert into storage.objects (bucket_id, name) values ('otro', 'd0000000-0000-0000-0000-000000000701/a.jpg')$q$,
-  '42501', null, 'las políticas no abren otros buckets');
-select pg_temp.como(:'operario') \g /dev/null
-select throws_ok($q$insert into storage.objects (bucket_id, name) values ('documentos', 'd0000000-0000-0000-0000-000000000701/b.jpg')$q$,
-  '42501', null, 'un operario no sube fotos de documentos');
-select is((select count(*) from storage.objects where bucket_id = 'documentos'), 0::bigint, 'ni las ve');
-select pg_temp.como(:'sec') \g /dev/null
-select is((select count(*) from storage.objects where bucket_id = 'documentos'), 1::bigint, 'la secretaria ve la foto');
 reset role;
 
 select * from finish();

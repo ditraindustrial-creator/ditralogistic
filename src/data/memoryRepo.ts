@@ -1,7 +1,7 @@
 import type { Repo } from './repo'
 import type { Cliente, Etapa, Linea, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
 import { ErrorTrabajo, MODALIDADES, primeraEtapa, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
-import { ErrorEntrega, nombreFotoDocumento, planificarEntrega, validarFotoDocumento } from '../dominio/entrega'
+import { ErrorEntrega, planificarEntrega } from '../dominio/entrega'
 import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
 import { diaLocal } from '../dominio/fechas'
 import { planificarClientes, planificarProductos } from '../dominio/maestros'
@@ -37,21 +37,11 @@ const esDeRuta = (u: UsuarioActual | null) => esGestion(u) || u?.rol === 'chofer
 /** Repo en memoria; `simularConexion` imita la caída y vuelta del canal en vivo (para pruebas). */
 export type RepoMemoria = Repo & { simularConexion(conectado: boolean): void }
 
-/** Contenido de un archivo como URL de datos (en memoria no hay Storage). */
-function leerComoUrl(archivo: Blob): Promise<string> {
-  return new Promise((resolve) => {
-    const lector = new FileReader()
-    lector.onload = () => resolve(String(lector.result))
-    lector.onerror = () => resolve(`data:${archivo.type};base64,`)
-    lector.readAsDataURL(archivo)
-  })
-}
-
 export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria {
   let actual: UsuarioActual | null = opciones.usuario ?? null
   const cuentas = opciones.cuentas ?? {}
   const etapas = opciones.etapas ?? []
-  // Los trabajos que cambian (guía, salida, foto) se reemplazan en el arreglo, sin tocar los objetos recibidos.
+  // Los trabajos que cambian (guía, salida) se reemplazan en el arreglo, sin tocar los objetos recibidos.
   const trabajos = opciones.trabajos ?? []
   const lineas = opciones.lineas ?? []
   const movimientos: Movimiento[] = [...(opciones.movimientos ?? [])]
@@ -59,7 +49,6 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
   const recorridos: Recorrido[] = (opciones.recorridos ?? []).map((r) => ({ ...r }))
   const productos: Producto[] = (opciones.productos ?? []).map((p) => ({ ...p }))
   const visitas: Visita[] = (opciones.visitas ?? []).map((v) => ({ ...v }))
-  const fotos = new Map<string, string>() // ruta -> URL de datos (imita el bucket)
   let siguienteId = 1
   const oyentes = new Set<() => void>()
   const oyentesEstado = new Set<(conectado: boolean) => void>()
@@ -244,22 +233,6 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
         trabajos[i] = { ...trabajos[i], guiaDespacho: g.guiaDespacho }
       }
       avisar()
-    },
-    async subirFotoDocumento(trabajoId, archivo) {
-      if (!esDeRuta(actual)) throw new ErrorEntrega('No tienes permiso para subir la foto del documento.')
-      validarFotoDocumento(archivo)
-      const i = trabajos.findIndex((t) => t.id === trabajoId)
-      if (i < 0) throw new ErrorEntrega('El trabajo no existe.')
-      const ruta = nombreFotoDocumento(trabajoId, archivo.type, `foto-${siguienteId++}`)
-      fotos.set(ruta, await leerComoUrl(archivo))
-      trabajos[i] = { ...trabajos[i], fotoDocumento: ruta }
-      return ruta
-    },
-    async urlFotoDocumento(ruta) {
-      if (!esDeRuta(actual)) throw new ErrorEntrega('No tienes permiso para ver la foto del documento.')
-      const url = fotos.get(ruta)
-      if (!url) throw new ErrorEntrega('No se encontró la foto del documento.')
-      return url
     },
     async listarClientes() {
       return clientes.map((c) => ({ ...c }))

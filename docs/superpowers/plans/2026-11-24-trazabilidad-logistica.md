@@ -6,7 +6,7 @@
 
 **Architecture:** Frontend React + TypeScript sin lógica de negocio en los componentes: las reglas viven en funciones puras de `src/dominio/` (probadas con Vitest). El acceso a datos pasa por una interfaz `Repo` con dos implementaciones: `supabaseRepo` (real) y `memoryRepo` (pruebas). El estado de cada línea se calcula siempre a partir de `movimientos`; las escrituras que mueven unidades se hacen por una función SQL atómica.
 
-**Tech Stack:** Vite, React 18, TypeScript, Tailwind, Supabase (Postgres, Auth, Realtime, Storage), Vitest + Testing Library, vite-plugin-pwa, Cloudflare Pages.
+**Tech Stack:** Vite, React 18, TypeScript, Tailwind, Supabase (Postgres, Auth, Realtime), Vitest + Testing Library, vite-plugin-pwa, Cloudflare Pages.
 
 **Spec:** `docs/superpowers/specs/2026-11-24-trazabilidad-logistica-design.md`
 
@@ -18,7 +18,7 @@
 - Áreas: `afilado` y `encuadernacion`. Modalidades de entrada y salida: `cliente`, `encomienda`, `ruta_propia`.
 - Etapas iniciales — afilado: Recibido → En taller → Afilado → Listo → Entregado; encuadernación: Recibido → En producción → Terminado → Entregado. Editables en la app.
 - El avance es por línea y por cantidad; el estado se calcula desde `movimientos` (usuario, fecha y hora en cada uno).
-- Sin integración con Ramaflex, sin Excel de facturación, sin firma digital, sin modo sin conexión, sin WhatsApp automático, sin seguimiento por pieza (segunda etapa). Prueba de entrega = documento firmado en papel; solo se guarda el número y una foto opcional.
+- Sin integración con Ramaflex, sin Excel de facturación, sin firma digital, sin modo sin conexión, sin WhatsApp automático, sin seguimiento por pieza (segunda etapa). Prueba de entrega = documento firmado en papel; la app solo guarda el número, sin foto.
 - Cada cliente tiene un solo recorrido y día fijos. Dos camionetas diarias de lunes a viernes más una de emergencia.
 - Horas y días se calculan en `America/Santiago`.
 
@@ -47,7 +47,7 @@
 - Create: proyecto en `/home/user/trazabilidad` (mover `/home/user/docs` adentro), `src/dominio/tipos.ts`, `src/dominio/permisos.ts`, `src/dominio/permisos.test.ts`, `src/data/repo.ts`, `src/data/memoryRepo.ts`, `src/data/supabaseRepo.ts`, `src/App.tsx`, `supabase/migrations/0001_esquema.sql`
 
 **Interfaces:**
-- Produces: tipos `Rol`, `Area`, `Modalidad`, `Pantalla = 'listo'|'recepcion'|'taller'|'ruta'|'hoja_chofer'|'reporte'|'admin'`, `Etapa {id, area, orden, nombre, esListo, esFinal}`, `Linea {id, trabajoId, producto, cantidad, nota?}`, `Movimiento {id, lineaId, cantidad, etapaOrigenId: string|null, etapaDestinoId, usuarioId, creadoEn: string}`, `Trabajo {id, numero, clienteId, area, entrada: Modalidad, salida: Modalidad, recibidoEn, guiaRetiro?, guiaDespacho?, factura?, transporte?, urgente, notas?, fotoDocumento?}`, `Cliente {id, nombre, rut, contacto?, direccion?, recorridoId: string|null}`, `Recorrido {id, nombre, dia: 1|2|3|4|5, camioneta, lejano: boolean}`; `puedeVer(rol: Rol, pantalla: Pantalla): boolean`; interfaz `Repo` (cada tarea siguiente agrega sus métodos aquí y en `memoryRepo`).
+- Produces: tipos `Rol`, `Area`, `Modalidad`, `Pantalla = 'listo'|'recepcion'|'taller'|'ruta'|'hoja_chofer'|'reporte'|'admin'`, `Etapa {id, area, orden, nombre, esListo, esFinal}`, `Linea {id, trabajoId, producto, cantidad, nota?}`, `Movimiento {id, lineaId, cantidad, etapaOrigenId: string|null, etapaDestinoId, usuarioId, creadoEn: string}`, `Trabajo {id, numero, clienteId, area, entrada: Modalidad, salida: Modalidad, recibidoEn, guiaRetiro?, guiaDespacho?, factura?, transporte?, urgente, notas?}`, `Cliente {id, nombre, rut, contacto?, direccion?, recorridoId: string|null}`, `Recorrido {id, nombre, dia: 1|2|3|4|5, camioneta, lejano: boolean}`; `puedeVer(rol: Rol, pantalla: Pantalla): boolean`; interfaz `Repo` (cada tarea siguiente agrega sus métodos aquí y en `memoryRepo`).
 
 - [ ] **Step 1: Crear el proyecto** con Vite (React + TS), Tailwind, Vitest, Testing Library y vite-plugin-pwa; `git init` en `/home/user/trazabilidad` y mover `/home/user/docs` adentro. Verificar con `npx vitest run` (sin pruebas aún) y `npm run build`.
 - [ ] **Step 2: Escribir `permisos.test.ts`** con estas aserciones: `puedeVer('chofer','hoja_chofer')` es true y `puedeVer('chofer','admin')` es false; `puedeVer('operario_afilado','taller')` es true y `puedeVer('operario_afilado','reporte')` es false; `puedeVer('jefe_taller','reporte')` y `puedeVer('secretaria','ruta')` son true; solo `admin` ve `admin`.
@@ -147,12 +147,12 @@
 
 **Interfaces:**
 - Consumes: `FilaListo`, `diaSemana`, `Recorrido`, `Cliente` (Tasks 1, 5), `Repo.crearTrabajo` (Task 4), `Repo.moverUnidades` (Task 2).
-- Produces: `armarRuta(fecha: string, filas: FilaListo[], clientes: Cliente[], recorridos: Recorrido[], visitas: Visita[]): Parada[]` con `Parada {clienteId, clienteNombre, recorridoId, entregar: FilaListo[], confirmada: 'si'|'no'|'sin_respuesta', requiereConfirmacion: boolean, solicitada: boolean}`; `Repo.marcarVisita(visitaId, confirmada)`; `Repo.agregarVisitaExtra(fecha, clienteId, nota)`; `Repo.entregarUnidades(lineaId, cantidad, documento: string): Promise<void>` (mueve a la etapa `esFinal` y guarda `guiaDespacho`); `Repo.subirFotoDocumento(trabajoId, archivo: File)`.
+- Produces: `armarRuta(fecha: string, filas: FilaListo[], clientes: Cliente[], recorridos: Recorrido[], visitas: Visita[]): Parada[]` con `Parada {clienteId, clienteNombre, recorridoId, entregar: FilaListo[], confirmada: 'si'|'no'|'sin_respuesta', requiereConfirmacion: boolean, solicitada: boolean}`; `Repo.marcarVisita(visitaId, confirmada)`; `Repo.agregarVisitaExtra(fecha, clienteId, nota)`; `Repo.entregarUnidades(lineaId, cantidad, documento: string): Promise<void>` (mueve a la etapa `esFinal` y guarda `guiaDespacho`).
 
 - [ ] **Step 1: Escribir `ruta.test.ts`:** para un martes, `armarRuta` incluye solo los clientes con recorrido de martes y que tengan algo listo, más cualquier cliente con visita solicitada ese día; una parada de un recorrido `lejano` sale con `requiereConfirmacion: true`; un cliente con visita `confirmada: 'no'` sale marcado y no se oculta; clientes sin recorrido no aparecen en la ruta pero sí en la lista de pendientes sin asignar que devuelve `armarRuta`.
 - [ ] **Step 2: Ejecutar** → FALLA. **Step 3: Implementar** `armarRuta`. **Step 4: Ejecutar** → PASA.
-- [ ] **Step 5: Escribir `HojaChofer.test.tsx`:** el chofer ve sus paradas; entregar 3 de 4 listas con documento "4521" llama a `entregarUnidades(linea, 3, '4521')` y queda 1 pendiente; crear un retiro en la parada llama a `crearTrabajo` con `entrada: 'ruta_propia'`; el botón de foto es opcional (se puede entregar sin foto).
-- [ ] **Step 6: Implementar** `RutaManana.tsx` (para secretaria y choferes: listado por recorrido, con marca manual de visita confirmada) y `HojaChofer.tsx`; `entregarUnidades` y `subirFotoDocumento` (bucket `documentos` de Supabase Storage). Ejecutar → PASA.
+- [ ] **Step 5: Escribir `HojaChofer.test.tsx`:** el chofer ve sus paradas; entregar 3 de 4 listas con documento "4521" llama a `entregarUnidades(linea, 3, '4521')` y queda 1 pendiente; crear un retiro en la parada llama a `crearTrabajo` con `entrada: 'ruta_propia'`.
+- [ ] **Step 6: Implementar** `RutaManana.tsx` (para secretaria y choferes: listado por recorrido, con marca manual de visita confirmada) y `HojaChofer.tsx`; `entregarUnidades` (solo guarda el número de documento). Ejecutar → PASA.
 - [ ] **Step 7: Commit** `feat: ruta de mañana y hoja del chofer`.
 
 ### Task 8: Reporte diario de encuadernación
