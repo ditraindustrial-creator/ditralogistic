@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Listo from './Listo'
-import { crearMemoryRepo } from '../../data/memoryRepo'
+import { crearMemoryRepo, type RepoMemoria } from '../../data/memoryRepo'
 import type { Repo } from '../../data/repo'
 import type { Etapa, Linea, Movimiento, Trabajo } from '../../dominio/tipos'
 
@@ -20,7 +20,7 @@ const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d:
   id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn,
 })
 
-function montar(extra?: (r: Repo) => Repo) {
+function montar(extra?: (r: RepoMemoria) => RepoMemoria) {
   const base = crearMemoryRepo({
     usuario: { id: 'u', nombre: 'Ana', rol: 'admin' },
     etapas,
@@ -121,6 +121,65 @@ describe('Listo', () => {
     expect(within(fila).getByText('0 de 3 listas')).toBeInTheDocument()
     await repo.moverUnidades('l2', 3, 'b1', 'b2')
     expect(await screen.findByText('3 de 3 listas')).toBeInTheDocument()
+  })
+
+  it('entrega parcial: 2 entregadas y 4 listas de 6 pedidas -> "4 de 4 listas", Todo listo y "2 entregadas"', async () => {
+    const repo = crearMemoryRepo({
+      usuario: { id: 'u', nombre: 'Ana', rol: 'admin' }, etapas: [...etapas, { id: 'a3', area: 'afilado', orden: 3, nombre: 'Entregado', esListo: false, esFinal: true }],
+      clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null }],
+      trabajos: [trab('t1', 1, 'c1', 'afilado')], lineas: [lin('l1', 't1', 6)],
+      movimientos: [mov('m1', 'l1', 6, null, 'a1', '2026-11-20T12:00:00Z'), mov('m2', 'l1', 6, 'a1', 'a2', '2026-11-21T12:00:00Z'), mov('m3', 'l1', 2, 'a2', 'a3', '2026-11-22T12:00:00Z')],
+    })
+    render(<Listo repo={repo} />)
+    const fila = await tarjeta('Imprenta Sur')
+    expect(within(fila).getByText('4 de 4 listas')).toBeInTheDocument()
+    expect(within(fila).getByText(/Todo listo desde/)).toBeInTheDocument()
+    expect(within(fila).getByText('2 entregadas · 6 en el pedido')).toBeInTheDocument()
+  })
+
+  it('entrega parcial: 4 entregadas y 2 en taller -> "0 de 2 listas" y aún no hay listas', async () => {
+    const repo = crearMemoryRepo({
+      usuario: { id: 'u', nombre: 'Ana', rol: 'admin' }, etapas: [...etapas, { id: 'a3', area: 'afilado', orden: 3, nombre: 'Entregado', esListo: false, esFinal: true }],
+      clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null }],
+      trabajos: [trab('t1', 1, 'c1', 'afilado')], lineas: [lin('l1', 't1', 6)],
+      movimientos: [mov('m1', 'l1', 6, null, 'a1', '2026-11-20T12:00:00Z'), mov('m2', 'l1', 4, 'a1', 'a3', '2026-11-22T12:00:00Z')],
+    })
+    render(<Listo repo={repo} />)
+    const fila = await tarjeta('Imprenta Sur')
+    expect(within(fila).getByText('0 de 2 listas')).toBeInTheDocument()
+    expect(within(fila).getByText('Aún no hay unidades listas')).toBeInTheDocument()
+    expect(within(fila).getByText('4 entregadas · 6 en el pedido')).toBeInTheDocument()
+  })
+
+  it('una ráfaga de movimientos produce una sola recarga', async () => {
+    const base = montar()
+    const espiar = vi.spyOn(base, 'cargarTodo')
+    await tarjeta('Libros del Norte')
+    const antes = espiar.mock.calls.length
+    await base.moverUnidades('l2', 1, 'b1', 'b2')
+    await base.moverUnidades('l2', 1, 'b1', 'b2')
+    await base.moverUnidades('l2', 1, 'b1', 'b2')
+    expect(await screen.findByText('3 de 3 listas')).toBeInTheDocument()
+    expect(espiar.mock.calls.length - antes).toBe(1)
+  })
+
+  it('muestra "Reconectando…" mientras el canal está caído y recarga al volver', async () => {
+    const repo = montar()
+    await tarjeta('Libros del Norte')
+    act(() => repo.simularConexion(false))
+    expect(screen.getByText('Reconectando…')).toBeInTheDocument()
+    const espiar = vi.spyOn(repo, 'cargarTodo')
+    act(() => repo.simularConexion(true))
+    expect(screen.queryByText('Reconectando…')).not.toBeInTheDocument()
+    await waitFor(() => expect(espiar).toHaveBeenCalledTimes(1))
+  })
+
+  it('recarga cuando la pestaña vuelve a estar visible', async () => {
+    const repo = montar()
+    await tarjeta('Libros del Norte')
+    const espiar = vi.spyOn(repo, 'cargarTodo')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await waitFor(() => expect(espiar).toHaveBeenCalledTimes(1))
   })
 
   it('al desmontar cancela la suscripción', async () => {

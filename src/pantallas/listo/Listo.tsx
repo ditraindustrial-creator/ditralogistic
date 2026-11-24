@@ -3,6 +3,9 @@ import type { Repo } from '../../data/repo'
 import { diaLocal } from '../../dominio/fechas'
 import { resumenListo, type FilaListo } from '../../dominio/listo'
 import type { Area } from '../../dominio/tipos'
+import { crearDebounce } from './debounce'
+
+const ESPERA_RECARGA_MS = 400
 
 const DIAS: Record<number, string> = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes' }
 const AREAS: Record<Area, string> = { afilado: 'Afilado', encuadernacion: 'Encuadernación' }
@@ -58,6 +61,7 @@ export default function Listo({ repo }: { repo: Repo }) {
   const [recorrido, setRecorrido] = useState('')
   const [dia, setDia] = useState('')
   const [soloListas, setSoloListas] = useState(false)
+  const [conectado, setConectado] = useState(true)
 
   useEffect(() => {
     let activo = true
@@ -75,10 +79,19 @@ export default function Listo({ repo }: { repo: Repo }) {
         setError(e instanceof Error ? e.message : 'No se pudo cargar la información.')
       }
     }
+    // Los eventos llegan en ráfagas (un movimiento por línea): se juntan en una sola recarga.
+    const recarga = crearDebounce(() => void cargar(), ESPERA_RECARGA_MS)
+    // Primero la suscripción y luego la carga, para no perder cambios entre ambas.
+    const cancelar = repo.suscribirCambios(recarga.llamar, (c) => activo && setConectado(c))
     void cargar()
-    const cancelar = repo.suscribirCambios(() => void cargar())
+    const alVolver = () => {
+      if (document.visibilityState === 'visible') recarga.llamar()
+    }
+    document.addEventListener('visibilitychange', alVolver)
     return () => {
       activo = false
+      recarga.cancelar()
+      document.removeEventListener('visibilitychange', alVolver)
       cancelar()
     }
   }, [repo])
@@ -148,6 +161,7 @@ export default function Listo({ repo }: { repo: Repo }) {
         Solo con unidades listas
       </label>
 
+      {!conectado && <p role="status" className="text-sm text-amber-700">Reconectando…</p>}
       {error && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{error}</p>}
       {filas === null && !error && <p>Cargando…</p>}
       {filas !== null && grupos.length === 0 && (
@@ -159,7 +173,7 @@ export default function Listo({ repo }: { repo: Repo }) {
           <h2 className="text-xl font-bold">{g.titulo}</h2>
           <ul className="flex flex-col gap-2">
             {g.filas.map((f) => {
-              const completo = f.total > 0 && f.listas >= f.total
+              const completo = f.pendientes > 0 && f.listas === f.pendientes
               return (
                 <li key={f.trabajoId} className={`rounded border-l-8 bg-white p-3 shadow-sm ${f.listas > 0 ? 'border-teal-600' : 'border-slate-300'}`}>
                   <div className="flex items-baseline justify-between gap-2">
@@ -167,11 +181,16 @@ export default function Listo({ repo }: { repo: Repo }) {
                     <span className="text-sm text-slate-600">Trabajo N.º {f.numero} · {AREAS[f.area]}</span>
                   </div>
                   <p className={`text-xl font-bold ${f.listas > 0 ? 'text-teal-800' : 'text-slate-600'}`}>
-                    {f.listas} de {f.total} listas
+                    {f.listas} de {f.pendientes} listas
                   </p>
                   <p className="text-slate-700">
                     {f.listoDesde ? `${completo ? 'Todo listo' : 'Listo'} desde ${desdeCuando(f.listoDesde)}` : 'Aún no hay unidades listas'}
                   </p>
+                  {f.entregadas > 0 && (
+                    <p className="text-sm text-slate-600">
+                      {f.entregadas} {f.entregadas === 1 ? 'entregada' : 'entregadas'} · {f.total} en el pedido
+                    </p>
+                  )}
                 </li>
               )
             })}

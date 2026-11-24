@@ -40,7 +40,7 @@ describe('resumenListo', () => {
     }))
     expect(r).toEqual([{
       trabajoId: 't1', numero: 7, clienteNombre: 'Imprenta Sur', area: 'afilado', salida: 'cliente',
-      listas: 4, total: 6, listoDesde: '2026-11-22T15:30:00Z', recorrido: 'Norte', dia: 2,
+      listas: 4, total: 6, entregadas: 0, pendientes: 6, listoDesde: '2026-11-22T15:30:00Z', recorrido: 'Norte', dia: 2,
     }])
   })
 
@@ -84,7 +84,7 @@ describe('resumenListo', () => {
       ],
     }))
     expect(r.map((f) => f.trabajoId)).toEqual(['t2'])
-    expect(r[0]).toMatchObject({ listas: 3, total: 4 })
+    expect(r[0]).toMatchObject({ listas: 3, total: 4, entregadas: 1, pendientes: 3 })
   })
 
   it('no falla con datos huérfanos (cliente inexistente, trabajo sin líneas, movimientos sin línea)', () => {
@@ -95,5 +95,38 @@ describe('resumenListo', () => {
     expect(r).toHaveLength(2)
     expect(r[0].total).toBe(0)
     expect(r[0].recorrido).toBeNull()
+  })
+
+  it('entregas parciales: 6 pedidas, 2 entregadas y 4 listas -> 4 de 4 pendientes', () => {
+    const r = resumenListo(datos({
+      trabajos: [trab('t1', 1, 'c1')], lineas: [lin('l1', 't1', 6)],
+      movimientos: [
+        mov('l1', 6, null, 'a1', '2026-11-20T12:00:00Z'), mov('l1', 6, 'a1', 'a2', '2026-11-21T12:00:00Z'),
+        mov('l1', 2, 'a2', 'a3', '2026-11-22T12:00:00Z'),
+      ],
+    }))
+    expect(r[0]).toMatchObject({ listas: 4, total: 6, entregadas: 2, pendientes: 4 })
+  })
+
+  it('entregas parciales: 4 entregadas y 2 aún en taller -> 0 de 2 pendientes', () => {
+    const r = resumenListo(datos({
+      trabajos: [trab('t1', 1, 'c1')], lineas: [lin('l1', 't1', 6)],
+      movimientos: [
+        mov('l1', 6, null, 'a1', '2026-11-20T12:00:00Z'), mov('l1', 4, 'a1', 'a2', '2026-11-21T12:00:00Z'),
+        mov('l1', 4, 'a2', 'a3', '2026-11-22T12:00:00Z'),
+      ],
+    }))
+    expect(r[0]).toMatchObject({ listas: 0, total: 6, entregadas: 4, pendientes: 2, listoDesde: null })
+  })
+
+  it('entregas parciales: 2 entregadas y todo lo que queda listo -> listas = pendientes', () => {
+    const r = resumenListo(datos({
+      trabajos: [trab('t1', 1, 'c1')], lineas: [lin('l1', 't1', 6)],
+      movimientos: [
+        mov('l1', 6, null, 'a1', '2026-11-20T12:00:00Z'), mov('l1', 2, 'a1', 'a3', '2026-11-21T12:00:00Z'),
+        mov('l1', 4, 'a1', 'a2', '2026-11-22T12:00:00Z'),
+      ],
+    }))
+    expect(r[0]).toMatchObject({ listas: 4, pendientes: 4, entregadas: 2 })
   })
 })

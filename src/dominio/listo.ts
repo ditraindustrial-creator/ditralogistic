@@ -17,7 +17,12 @@ export interface FilaListo {
   area: Area
   salida: Modalidad
   listas: number
+  /** Unidades pedidas en el trabajo (incluye las ya entregadas). */
   total: number
+  /** Unidades ya entregadas (en una etapa final). */
+  entregadas: number
+  /** Unidades que siguen en la operación: total - entregadas. */
+  pendientes: number
   /** Instante (ISO) del último movimiento hacia una etapa "listo"; null si no hay unidades listas. */
   listoDesde: string | null
   recorrido: string | null
@@ -73,6 +78,8 @@ export function resumenListo(datos: DatosOperacion): FilaListo[] {
       salida: t.salida,
       listas: a.listas,
       total: a.total,
+      entregadas: a.finales,
+      pendientes: a.total - a.finales,
       listoDesde: a.listas > 0 ? a.listoDesde : null,
       recorrido: recorrido?.nombre ?? null,
       dia: recorrido?.dia ?? null,

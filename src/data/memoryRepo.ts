@@ -25,7 +25,10 @@ export interface MemoryRepoOpciones {
   productos?: Producto[]
 }
 
-export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
+/** Repo en memoria; `simularConexion` imita la caída y vuelta del canal en vivo (para pruebas). */
+export type RepoMemoria = Repo & { simularConexion(conectado: boolean): void }
+
+export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria {
   let actual: UsuarioActual | null = opciones.usuario ?? null
   const cuentas = opciones.cuentas ?? {}
   const etapas = opciones.etapas ?? []
@@ -37,6 +40,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
   const productos: Producto[] = (opciones.productos ?? []).map((p) => ({ ...p }))
   let siguienteId = 1
   const oyentes = new Set<() => void>()
+  const oyentesEstado = new Set<(conectado: boolean) => void>()
   const avisar = () => oyentes.forEach((f) => f())
 
   // Sin sesión se permite (fixtures de prueba); con sesión, igual que RLS: admin y gestión.
@@ -141,11 +145,17 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): Repo {
         recorridos: recorridos.map((r) => ({ ...r })),
       }
     },
-    suscribirCambios(alCambiar) {
+    suscribirCambios(alCambiar, alEstado) {
       oyentes.add(alCambiar)
+      if (alEstado) oyentesEstado.add(alEstado)
       return () => {
         oyentes.delete(alCambiar)
+        if (alEstado) oyentesEstado.delete(alEstado)
       }
+    },
+    simularConexion(conectado) {
+      oyentesEstado.forEach((f) => f(conectado))
+      if (conectado) avisar()
     },
     async listarClientes() {
       return clientes.map((c) => ({ ...c }))

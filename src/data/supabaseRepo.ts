@@ -275,12 +275,19 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
         throw new Error('No se pudo cargar la información. Revisa tu conexión.')
       }
     },
-    suscribirCambios(alCambiar) {
+    suscribirCambios(alCambiar, alEstado) {
       // Realtime: cualquier cambio en movimientos (y los trabajos nuevos, que traen su movimiento inicial).
       const canal = sb
         .channel(`cambios-${Math.random().toString(36).slice(2)}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'movimientos' }, () => alCambiar())
-        .subscribe()
+        .subscribe((estado) => {
+          if (estado === 'SUBSCRIBED') {
+            alEstado?.(true)
+            alCambiar() // pudo haber cambios antes de unirse o mientras estuvo caído
+          } else {
+            alEstado?.(false)
+          }
+        })
       return () => {
         void sb.removeChannel(canal)
       }

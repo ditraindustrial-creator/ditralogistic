@@ -68,6 +68,22 @@ describe('supabaseRepo.suscribirCambios', () => {
   })
 })
 
+describe('supabaseRepo.suscribirCambios: estado del canal', () => {
+  it('al quedar SUBSCRIBED avisa conectado y pide recarga; al caer avisa desconectado', () => {
+    const { sb, canal } = crearFalso({})
+    const cambio = vi.fn()
+    const estado = vi.fn()
+    crearRepoConCliente(sb).suscribirCambios(cambio, estado)
+    const alEstado = canal.subscribe.mock.calls[0][0] as (e: string) => void
+    alEstado('CHANNEL_ERROR')
+    expect(estado).toHaveBeenLastCalledWith(false)
+    expect(cambio).not.toHaveBeenCalled()
+    alEstado('SUBSCRIBED')
+    expect(estado).toHaveBeenLastCalledWith(true)
+    expect(cambio).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('memoryRepo.suscribirCambios', () => {
   it('avisa al mover unidades y deja de avisar tras cancelar', async () => {
     const repo = crearMemoryRepo({

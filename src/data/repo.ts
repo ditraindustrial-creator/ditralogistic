@@ -45,7 +45,9 @@ export interface Repo {
   cargarTodo(): Promise<DatosOperacion>
   /**
    * Avisa (sin datos) cada vez que cambian los movimientos, para que la pantalla recargue.
+   * `alEstado` informa si el canal en vivo está conectado; al (re)conectarse también se llama
+   * `alCambiar`, porque pudo haber cambios mientras estuvo caído.
    * Devuelve la función que cancela la suscripción.
    */
-  suscribirCambios(alCambiar: () => void): () => void
+  suscribirCambios(alCambiar: () => void, alEstado?: (conectado: boolean) => void): () => void
 }
