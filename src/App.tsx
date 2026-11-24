@@ -1,0 +1,98 @@
+import { useEffect, useState, type FormEvent } from 'react'
+import type { Repo } from './data/repo'
+import type { Pantalla, UsuarioActual } from './dominio/tipos'
+import { puedeVer } from './dominio/permisos'
+
+const PANTALLAS: { id: Pantalla; titulo: string }[] = [
+  { id: 'listo', titulo: 'Qué hay listo' },
+  { id: 'recepcion', titulo: 'Recepción' },
+  { id: 'taller', titulo: 'Taller / Producción' },
+  { id: 'ruta', titulo: 'Ruta de mañana' },
+  { id: 'hoja_chofer', titulo: 'Hoja de ruta' },
+  { id: 'reporte', titulo: 'Reporte diario' },
+  { id: 'admin', titulo: 'Administración' },
+]
+
+function Login({ repo, alIniciar }: { repo: Repo; alIniciar: (u: UsuarioActual) => void }) {
+  const [correo, setCorreo] = useState('')
+  const [clave, setClave] = useState('')
+  const [error, setError] = useState('')
+
+  async function enviar(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    try {
+      alIniciar(await repo.iniciarSesion(correo, clave))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo iniciar sesión')
+    }
+  }
+
+  return (
+    <form onSubmit={enviar} className="mx-auto flex max-w-sm flex-col gap-4 p-6">
+      <h1 className="text-2xl font-bold">Iniciar sesión</h1>
+      <label className="flex flex-col gap-1">
+        Correo
+        <input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} className="rounded border p-3 text-lg" />
+      </label>
+      <label className="flex flex-col gap-1">
+        Contraseña
+        <input type="password" value={clave} onChange={(e) => setClave(e.target.value)} className="rounded border p-3 text-lg" />
+      </label>
+      {error && <p role="alert" className="text-red-700">{error}</p>}
+      <button type="submit" className="rounded bg-teal-700 p-4 text-lg font-semibold text-white">Entrar</button>
+    </form>
+  )
+}
+
+export default function App({ repo }: { repo: Repo }) {
+  const [usuario, setUsuario] = useState<UsuarioActual | null>(null)
+  const [cargando, setCargando] = useState(true)
+  const [pantalla, setPantalla] = useState<Pantalla | null>(null)
+
+  useEffect(() => {
+    repo.usuarioActual().then((u) => {
+      setUsuario(u)
+      setCargando(false)
+    })
+  }, [repo])
+
+  if (cargando) return <p className="p-6">Cargando…</p>
+  if (!usuario) return <Login repo={repo} alIniciar={setUsuario} />
+
+  const permitidas = PANTALLAS.filter((p) => puedeVer(usuario.rol, p.id))
+  const actual = permitidas.find((p) => p.id === pantalla)
+
+  return (
+    <div className="mx-auto max-w-md p-4">
+      <header className="mb-4 flex items-center justify-between">
+        <span className="text-lg font-semibold">Hola, {usuario.nombre}</span>
+        <button
+          className="rounded border px-4 py-2"
+          onClick={async () => {
+            await repo.cerrarSesion()
+            setUsuario(null)
+            setPantalla(null)
+          }}
+        >
+          Salir
+        </button>
+      </header>
+      {actual ? (
+        <section>
+          <button className="mb-4 rounded border px-4 py-2" onClick={() => setPantalla(null)}>← Menú</button>
+          <h1 className="text-2xl font-bold">{actual.titulo}</h1>
+          <p className="mt-2 text-slate-600">Próximamente.</p>
+        </section>
+      ) : (
+        <nav aria-label="Menú" className="flex flex-col gap-3">
+          {permitidas.map((p) => (
+            <button key={p.id} onClick={() => setPantalla(p.id)} className="rounded bg-teal-700 p-5 text-left text-xl font-semibold text-white">
+              {p.titulo}
+            </button>
+          ))}
+        </nav>
+      )}
+    </div>
+  )
+}
