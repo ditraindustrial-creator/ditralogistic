@@ -85,4 +85,13 @@ describe('App inicio', () => {
     expect(await screen.findByRole('button', { name: 'Hoja de ruta' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Qué hay listo' })).not.toBeInTheDocument()
   })
+
+  it('la secretaria abre el reporte diario, con un solo título', async () => {
+    const repo = crearMemoryRepo({ usuario: { id: 'u3', nombre: 'Sofía', rol: 'secretaria' } })
+    render(<App repo={repo} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Reporte diario' }))
+    expect(await screen.findByRole('button', { name: 'Imprimir' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: 'Reporte diario' })).toHaveLength(1)
+    expect(screen.queryByText('Próximamente.')).not.toBeInTheDocument()
+  })
 })

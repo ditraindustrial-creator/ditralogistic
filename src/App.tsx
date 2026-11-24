@@ -4,6 +4,7 @@ import type { Pantalla, UsuarioActual } from './dominio/tipos'
 import { puedeVer } from './dominio/permisos'
 import Listo from './pantallas/listo/Listo'
 import Maestros from './pantallas/admin/Maestros'
+import Reporte from './pantallas/reporte/Reporte'
 import Recepcion from './pantallas/recepcion/Recepcion'
 import HojaChofer from './pantallas/ruta/HojaChofer'
 import RutaManana from './pantallas/ruta/RutaManana'
@@ -103,7 +104,7 @@ export default function App({ repo }: { repo: Repo }) {
       </header>
       {actual ? (
         <section>
-          <button className="mb-4 rounded border px-4 py-2" onClick={() => setPantalla(null)}>← Menú</button>
+          <button className="mb-4 rounded border px-4 py-2 print:hidden" onClick={() => setPantalla(null)}>← Menú</button>
           <h1 className="text-2xl font-bold">{actual.titulo}</h1>
           {actual.id === 'admin' ? (
             <div className="mt-4"><Maestros repo={repo} /></div>
@@ -115,6 +116,8 @@ export default function App({ repo }: { repo: Repo }) {
             <div className="mt-4"><RutaManana repo={repo} usuario={usuario} /></div>
           ) : actual.id === 'hoja_chofer' ? (
             <div className="mt-4"><HojaChofer repo={repo} usuario={usuario} /></div>
+          ) : actual.id === 'reporte' ? (
+            <div className="mt-4"><Reporte repo={repo} /></div>
           ) : (
             <p className="mt-2 text-slate-600">Próximamente.</p>
           )}
