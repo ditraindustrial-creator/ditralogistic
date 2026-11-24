@@ -264,12 +264,31 @@ describe('RutaManana', () => {
       await userEvent.click(within(mostrador).getByRole('button', { name: 'Entregar en mostrador' }))
       await userEvent.type(await screen.findByLabelText(/N° de documento/), '4521')
       await userEvent.dblClick(screen.getByRole('button', { name: 'Entregar' }))
-      expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 2 unidades · Guía 4521')
+      expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 2 unidades · Documento 4521')
       expect(entregar).toHaveBeenCalledTimes(1)
       expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l4', cantidad: 2 }], '4521')
       await userEvent.click(screen.getByRole('button', { name: 'Listo' }))
       await waitFor(() => expect(screen.queryByRole('heading', { name: 'Retiran en mostrador' })).not.toBeInTheDocument())
     })
+  })
+
+  it('lo que va por encomienda se despacha con documento: una llamada y confirmación', async () => {
+    const entregar = vi.fn()
+    montar({ envolver: (r) => ({ ...r, entregarUnidades: (...a) => (entregar(...a), r.entregarUnidades(...a)) }) })
+    const enco = await seccion('Por encomienda')
+    await userEvent.click(within(enco).getByRole('button', { name: 'Despachar' }))
+    expect(await screen.findByRole('heading', { name: 'Despachar por encomienda' })).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/N° de documento/), 'F-88')
+    await userEvent.dblClick(screen.getByRole('button', { name: 'Entregar' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 3 unidades · Documento F-88')
+    expect(entregar).toHaveBeenCalledTimes(1)
+    expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l5', cantidad: 3 }], 'F-88')
+  })
+
+  it('un rol que no puede entregar no ve los botones de entrega', async () => {
+    montar({ rol: 'operario_afilado' })
+    const enco = await seccion('Por encomienda')
+    expect(within(enco).queryByRole('button', { name: 'Despachar' })).not.toBeInTheDocument()
   })
 
   it('se imprime como hoja simple: los controles no salen en papel', async () => {

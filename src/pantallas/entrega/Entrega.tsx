@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { ErrorEntrega, validarEntradaEntrega, type Entrega as EntregaDatos, type LineaEntregable } from '../../dominio/entrega'
 
@@ -36,6 +36,8 @@ export default function Entrega({
   cantidadesIniciales?: Record<string, number>
 }) {
   const enCurso = useRef(false)
+  const formulario = useRef<HTMLFormElement>(null)
+  const campoDocumento = useRef<HTMLInputElement>(null)
   const [editadas, setEditadas] = useState<Record<string, string>>({})
   const [desmarcadas, setDesmarcadas] = useState<ReadonlySet<string>>(new Set())
   const [documento, setDocumento] = useState('')
@@ -93,11 +95,17 @@ export default function Entrega({
     }
   }
 
+  // Al abrirse (a veces bajo una lista larga, en el celular) el panel se muestra y deja listo el documento.
+  useEffect(() => {
+    formulario.current?.scrollIntoView?.({ block: 'start' })
+    campoDocumento.current?.focus()
+  }, [])
+
   if (hecho) {
     return (
       <div className="flex flex-col gap-4 rounded border-2 border-teal-700 p-4">
         <p role="status" className="text-xl font-bold text-teal-800">
-          Entrega registrada: {unidades(hecho.unidades)} · Guía {hecho.documento}
+          Entrega registrada: {unidades(hecho.unidades)} · Documento {hecho.documento}
         </p>
         <button type="button" className={botonGrande} onClick={alCerrar}>Listo</button>
       </div>
@@ -109,6 +117,7 @@ export default function Entrega({
 
   return (
     <form
+      ref={formulario}
       className="flex flex-col gap-4 rounded border-2 border-teal-700 p-4"
       onSubmit={(e) => {
         e.preventDefault()
@@ -165,6 +174,7 @@ export default function Entrega({
         <label className="flex flex-col gap-1 text-lg font-semibold">
           N° de documento (guía o factura)
           <input
+            ref={campoDocumento}
             className={`${campo} font-normal`}
             autoComplete="off"
             value={documento}

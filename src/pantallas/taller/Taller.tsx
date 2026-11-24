@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { ErrorMovimiento, validarMovimiento } from '../../dominio/avance'
-import { puedeVer } from '../../dominio/permisos'
+import { puedeEntregar, puedeVer } from '../../dominio/permisos'
 import type { LineaEntregable } from '../../dominio/entrega'
 import { areasDelRol, destinoPorDefecto, lineasEnCurso, origenPorDefecto, reconciliarSeleccion, type LineaTaller } from '../../dominio/taller'
 import type { Area, UsuarioActual } from '../../dominio/tipos'
@@ -10,6 +10,7 @@ import Entrega from '../entrega/Entrega'
 
 const AREAS: Record<Area, string> = { afilado: 'Afilado', encuadernacion: 'Encuadernación' }
 const ERROR_GENERICO = 'No se pudo mover las unidades. Revisa tu conexión e inténtalo de nuevo.'
+const SOLO_ENTREGAN = 'Solo secretaría, jefe de taller o chofer registran entregas.'
 const PRIMERO_LISTO = 'Primero pasa las unidades a Listo.'
 
 const botonGrande = 'min-h-14 rounded bg-teal-700 px-5 py-3 text-xl font-semibold text-white disabled:opacity-50'
@@ -54,6 +55,8 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   // Mover a la etapa final es entregar: se abre el flujo de entrega (con documento) en vez de mover.
   const [entrega, setEntrega] = useState<{ lineaId: string; cantidad: number } | null>(null)
 
+  const entrega_ok = puedeEntregar(usuario.rol)
+
   const permitidas = useMemo(
     () => (puedeVer(usuario.rol, 'taller') ? areasDelRol(usuario.rol).filter((a) => !area || a === area) : []),
     [usuario.rol, area],
@@ -78,6 +81,13 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
     return <p role="alert" className="text-red-700">No tienes acceso al taller.</p>
   }
 
+  // Quien no puede entregar no recibe la etapa final como destino por defecto.
+  function destinoInicial(l: LineaTaller, origenId: string): string {
+    const d = destinoPorDefecto(l.etapasArea, origenId)
+    if (entrega_ok || !l.etapasArea.find((e) => e.id === d)?.esFinal) return d
+    return l.etapasArea.find((e) => e.id !== origenId && !e.esFinal)?.id ?? d
+  }
+
   function abrir(l: LineaTaller) {
     setErrorMover('')
     setConfirmacion('')
@@ -86,11 +96,11 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
       return
     }
     const origenId = origenPorDefecto(l.distribucion)
-    setSel({ lineaId: l.lineaId, origenId, destinoId: destinoPorDefecto(l.etapasArea, origenId), cantidad: String(disponibles(l, origenId)) })
+    setSel({ lineaId: l.lineaId, origenId, destinoId: destinoInicial(l, origenId), cantidad: String(disponibles(l, origenId)) })
   }
 
   function cambiarOrigen(l: LineaTaller, origenId: string) {
-    setSel({ lineaId: l.lineaId, origenId, destinoId: destinoPorDefecto(l.etapasArea, origenId), cantidad: String(disponibles(l, origenId)) })
+    setSel({ lineaId: l.lineaId, origenId, destinoId: destinoInicial(l, origenId), cantidad: String(disponibles(l, origenId)) })
   }
 
   function ajustar(l: LineaTaller, delta: number) {
@@ -104,6 +114,10 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   async function mover(l: LineaTaller) {
     if (enCurso.current || !sel) return
     if (l.etapasArea.find((e) => e.id === sel.destinoId)?.esFinal) {
+      if (!entrega_ok) {
+        setErrorMover(SOLO_ENTREGAN)
+        return
+      }
       const origen = l.etapasArea.find((e) => e.id === sel.origenId)
       if (!origen?.esListo) {
         setErrorMover(PRIMERO_LISTO)
@@ -246,7 +260,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                   <fieldset className="flex flex-col gap-2">
                     <legend className="mb-1 text-lg font-semibold">Pasar a</legend>
                     <div className="grid grid-cols-2 gap-2">
-                      {l.etapasArea.filter((e) => e.id !== sel.origenId).map((e) => (
+                      {l.etapasArea.filter((e) => e.id !== sel.origenId && (entrega_ok || !e.esFinal)).map((e) => (
                         <Opcion
                           key={e.id}
                           nombre={`destino-${l.lineaId}`}
@@ -256,6 +270,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                         />
                       ))}
                     </div>
+                    {!entrega_ok && <p className="text-sm text-slate-600">{SOLO_ENTREGAN}</p>}
                   </fieldset>
 
                   <div className="flex flex-col gap-2">

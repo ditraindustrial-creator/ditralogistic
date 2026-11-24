@@ -48,6 +48,24 @@ const doc = () => screen.getByLabelText(/N° de documento/)
 const entregar = () => screen.getByRole('button', { name: 'Entregar' })
 
 describe('Entrega', () => {
+  it('al abrirse se muestra en pantalla y deja el cursor en el número de documento', () => {
+    const original = Element.prototype.scrollIntoView
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    try {
+      montar()
+      expect(scroll).toHaveBeenCalledWith({ block: 'start' })
+      expect(doc()).toHaveFocus()
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
+  it('sin scrollIntoView (jsdom) igual enfoca el documento', () => {
+    montar()
+    expect(doc()).toHaveFocus()
+  })
+
   it('por defecto entrega todo lo listo de cada línea', () => {
     montar()
     expect(screen.getByLabelText('Cantidad Cuchillo')).toHaveValue('4')
@@ -64,7 +82,7 @@ describe('Entrega', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Menos Cuchillo' }))
     await userEvent.type(doc(), ' 4521 ')
     await userEvent.click(entregar())
-    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 3 unidades · Guía 4521')
+    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 3 unidades · Documento 4521')
     expect(espia).toHaveBeenCalledTimes(1)
     expect(espia).toHaveBeenCalledWith([{ lineaId: 'l1', cantidad: 3 }], '4521')
     expect(alTerminar).toHaveBeenCalledTimes(1)
@@ -76,7 +94,7 @@ describe('Entrega', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Menos Tijera' }))
     await userEvent.type(doc(), 'F-77')
     await userEvent.click(entregar())
-    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 1 unidad · Guía F-77')
+    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 1 unidad · Documento F-77')
   })
 
   it('el contador no pasa de lo listo ni baja de 1, y lo escrito se recorta al máximo', async () => {
@@ -144,7 +162,7 @@ describe('Entrega', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('«Tijera» tiene 1 unidad lista; no se pueden entregar 2 (faltan 1).')
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     await userEvent.click(entregar())
-    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 6 unidades · Guía 4521')
+    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 6 unidades · Documento 4521')
   })
 
   it('un error técnico nunca se muestra crudo', async () => {
@@ -172,7 +190,7 @@ describe('Entrega', () => {
     const { alCerrar } = montar()
     await userEvent.type(doc(), '4521')
     await userEvent.click(entregar())
-    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 6 unidades · Guía 4521')
+    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 6 unidades · Documento 4521')
     await userEvent.click(screen.getByRole('button', { name: 'Listo' }))
     expect(alCerrar).toHaveBeenCalledTimes(1)
   })

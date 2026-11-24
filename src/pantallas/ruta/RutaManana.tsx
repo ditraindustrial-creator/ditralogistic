@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { diaLocal, diaSemana, siguienteDiaHabil } from '../../dominio/fechas'
 import { lineasEntregables } from '../../dominio/entrega'
+import { puedeEntregar } from '../../dominio/permisos'
 import { resumenListo, type FilaListo } from '../../dominio/listo'
 import { armarRuta, ErrorVisita, fechaValida, type Confirmacion, type Parada } from '../../dominio/ruta'
 import { ErrorTrabajo, filtrarClientes } from '../../dominio/trabajo'
@@ -25,13 +26,13 @@ const botonClaro = 'min-h-14 rounded border-2 border-slate-300 bg-white px-4 py-
 
 const unidades = (n: number) => `${n} ${n === 1 ? 'trabajo' : 'trabajos'}`
 
-export default function RutaManana({ repo }: { repo: Repo; usuario?: UsuarioActual }) {
+export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: UsuarioActual }) {
   const { datos, error: errorCarga, conectado, recargar } = useDatosEnVivo(repo)
   const [fecha, setFecha] = useState(() => siguienteDiaHabil(diaLocal(new Date().toISOString())))
   const { visitas, error: errorVisitas, recargar: recargarVisitas } = useVisitas(repo, fecha)
   const [aviso, setAviso] = useState('')
   const [error, setError] = useState('')
-  const [entregando, setEntregando] = useState<string | null>(null)
+  const [entregando, setEntregando] = useState<{ trabajoId: string; titulo: string } | null>(null)
   const [extraAbierta, setExtraAbierta] = useState(false)
   const ocupado = useRef(new Set<string>())
   const [, repintar] = useState(0)
@@ -127,10 +128,10 @@ export default function RutaManana({ repo }: { repo: Repo; usuario?: UsuarioActu
       {entregando && datos && (
         <div className="print:hidden">
           <Entrega
-            key={entregando}
+            key={entregando.trabajoId}
             repo={repo}
-            titulo="Entregar en mostrador"
-            lineas={lineasEntregables(datos, [entregando])}
+            titulo={entregando.titulo}
+            lineas={lineasEntregables(datos, [entregando.trabajoId])}
             alTerminar={() => void recargar()}
             alCerrar={() => setEntregando(null)}
           />
@@ -219,10 +220,11 @@ export default function RutaManana({ repo }: { repo: Repo; usuario?: UsuarioActu
             datos={datos}
             ocupado={(f) => ocupado.current.has(`salida-${f.trabajoId}`)}
             alCambiarSalida={cambiarSalida}
-            alEntregar={(f) => {
+            etiquetaEntregar="Entregar en mostrador"
+            alEntregar={puedeEntregar(usuario.rol) ? (f) => {
               setAviso('')
-              setEntregando(f.trabajoId)
-            }}
+              setEntregando({ trabajoId: f.trabajoId, titulo: 'Entregar en mostrador' })
+            } : undefined}
           />
           <FilasSueltas
             titulo="Por encomienda"
@@ -230,6 +232,11 @@ export default function RutaManana({ repo }: { repo: Repo; usuario?: UsuarioActu
             datos={datos}
             ocupado={(f) => ocupado.current.has(`salida-${f.trabajoId}`)}
             alCambiarSalida={cambiarSalida}
+            etiquetaEntregar="Despachar"
+            alEntregar={puedeEntregar(usuario.rol) ? (f) => {
+              setAviso('')
+              setEntregando({ trabajoId: f.trabajoId, titulo: 'Despachar por encomienda' })
+            } : undefined}
           />
         </>
       )}
@@ -238,7 +245,7 @@ export default function RutaManana({ repo }: { repo: Repo; usuario?: UsuarioActu
 }
 
 function FilasSueltas({
-  titulo, ayuda, filas, datos, ocupado, alCambiarSalida, alEntregar,
+  titulo, ayuda, filas, datos, ocupado, alCambiarSalida, alEntregar, etiquetaEntregar,
 }: {
   titulo: string
   ayuda?: string
@@ -247,6 +254,7 @@ function FilasSueltas({
   ocupado: (f: FilaListo) => boolean
   alCambiarSalida: (f: FilaListo, s: Modalidad) => void
   alEntregar?: (f: FilaListo) => void
+  etiquetaEntregar?: string
 }) {
   if (filas.length === 0) return null
   const id = `s-${titulo.replace(/\W+/g, '-')}`
@@ -279,7 +287,7 @@ function FilasSueltas({
               </label>
               {alEntregar && (
                 <button type="button" className={botonGrande} onClick={() => alEntregar(f)}>
-                  Entregar en mostrador
+                  {etiquetaEntregar}
                 </button>
               )}
             </div>

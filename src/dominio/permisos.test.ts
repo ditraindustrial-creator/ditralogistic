@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { puedeVer } from './permisos'
+import { puedeEntregar, puedeVer } from './permisos'
 import type { Pantalla, Rol } from './tipos'
 
 describe('puedeVer', () => {
@@ -22,5 +22,12 @@ describe('puedeVer', () => {
     const roles: Rol[] = ['admin', 'secretaria', 'chofer', 'operario_afilado', 'operario_encuadernacion', 'jefe_taller']
     const quienes = roles.filter((r) => puedeVer(r, 'admin' as Pantalla))
     expect(quienes).toEqual(['admin'])
+  })
+})
+
+describe('puedeEntregar', () => {
+  it('solo gestión y chofer, como entregar_unidades en la base', () => {
+    for (const r of ['admin', 'secretaria', 'jefe_taller', 'chofer'] as const) expect(puedeEntregar(r)).toBe(true)
+    for (const r of ['operario_afilado', 'operario_encuadernacion'] as const) expect(puedeEntregar(r)).toBe(false)
   })
 })

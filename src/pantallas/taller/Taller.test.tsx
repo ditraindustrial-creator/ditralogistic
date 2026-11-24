@@ -151,6 +151,22 @@ describe('Taller', () => {
     expect(alerta).not.toHaveTextContent('fetch failed')
   })
 
+  describe('quién puede entregar', () => {
+    it('un operario no recibe la etapa final como destino y ve el aviso', async () => {
+      montar('operario_afilado')
+      const fila = await abrir('Libros del Norte', 'Hacha')
+      expect(within(fila).queryByLabelText('Entregado')).not.toBeInTheDocument()
+      expect(within(fila).getByText('Solo secretaría, jefe de taller o chofer registran entregas.')).toBeInTheDocument()
+      expect(within(fila).getByRole('button', { name: 'Mover' })).toBeInTheDocument()
+    })
+    it('el jefe de taller sí la tiene', async () => {
+      montar('jefe_taller')
+      const fila = await abrir('Libros del Norte', 'Hacha')
+      expect(within(fila).getByLabelText('Entregado')).toBeInTheDocument()
+      expect(within(fila).queryByText(/registran entregas/)).not.toBeInTheDocument()
+    })
+  })
+
   describe('mover a la etapa final es una entrega (pide documento y usa entregarUnidades)', () => {
     it('si el origen no es "Listo", avisa y no llama a nada', async () => {
       const mover = vi.fn()
@@ -177,7 +193,7 @@ describe('Taller', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Menos Hacha' }))
       await userEvent.type(screen.getByLabelText(/N° de documento/), '4521')
       await userEvent.click(screen.getByRole('button', { name: 'Entregar' }))
-      expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 4 unidades · Guía 4521')
+      expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 4 unidades · Documento 4521')
       expect(entregar).toHaveBeenCalledTimes(1)
       expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l5', cantidad: 4 }], '4521')
       expect(mover).not.toHaveBeenCalled()

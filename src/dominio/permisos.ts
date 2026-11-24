@@ -14,3 +14,10 @@ const PANTALLAS_POR_ROL: Record<Rol, readonly Pantalla[]> = {
 export function puedeVer(rol: Rol, pantalla: Pantalla): boolean {
   return PANTALLAS_POR_ROL[rol].includes(pantalla)
 }
+
+const ROLES_QUE_ENTREGAN: readonly Rol[] = ['admin', 'secretaria', 'jefe_taller', 'chofer']
+
+/** Quién puede registrar entregas (igual que entregar_unidades en la base: gestión y chofer). */
+export function puedeEntregar(rol: Rol): boolean {
+  return ROLES_QUE_ENTREGAN.includes(rol)
+}
