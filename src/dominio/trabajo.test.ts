@@ -64,7 +64,7 @@ describe('parsearCantidad', () => {
 })
 
 describe('filtrarClientes', () => {
-  const c = (id: string, nombre: string, rut: string): Cliente => ({ id, nombre, rut, recorridoId: null })
+  const c = (id: string, nombre: string, rut: string): Cliente => ({ id, nombre, rut })
   const lista = [
     c('1', 'Imprenta Sur Ltda.', '76123456-7'),
     c('2', 'Ñandú SpA', '12345678-5'),

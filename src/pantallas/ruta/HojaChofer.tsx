@@ -1,15 +1,15 @@
 import { useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { lineasEntregables } from '../../dominio/entrega'
-import { diaSemana } from '../../dominio/fechas'
+import { diaLocal, diaSemana } from '../../dominio/fechas'
 import { resumenListo } from '../../dominio/listo'
-import { armarRuta, ErrorVisita, fechaValida, ordenarParadas, type Confirmacion, type Parada } from '../../dominio/ruta'
+import { armarRuta, ErrorVisita, fechaValida, ordenarParadas, recorridoDelChofer, type Confirmacion, type Parada } from '../../dominio/ruta'
 import type { Cliente, UsuarioActual } from '../../dominio/tipos'
 import Entrega from '../entrega/Entrega'
 import Recepcion from '../recepcion/Recepcion'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import { useFechaPorDefecto } from '../useFechaPorDefecto'
-import { agruparParadas, ControlVisita, ESTADO_VISITA, fechaLarga, Plegable, textoProductos, useVisitas } from './comun'
+import { agruparParadas, ControlVisita, ESTADO_VISITA, fechaLarga, InsigniaParada, Plegable, textoProductos, useVisitas } from './comun'
 
 const ERROR_VISITA = 'No se pudo guardar la visita. Revisa tu conexión e inténtalo de nuevo.'
 const elMismoDia = (hoy: string) => hoy
@@ -34,7 +34,10 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
   const [, repintar] = useState(0)
 
   const ruta = useMemo(
-    () => (datos && visitas ? armarRuta(fecha, resumenListo(datos), datos.clientes, datos.recorridos, visitas) : null),
+    () =>
+      datos && visitas
+        ? armarRuta(fecha, resumenListo(datos, diaLocal(new Date().toISOString())), datos.clientes, datos.recorridos, datos.asignaciones, visitas)
+        : null,
     [datos, visitas, fecha],
   )
   // Un grupo por recorrido con todas sus paradas: primero las de entregar y, aparte, las de pasar a retirar.
@@ -42,7 +45,9 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
     () => agruparParadas(ordenarParadas([...(ruta?.paradas ?? []), ...(ruta?.pasarARetirar ?? [])]), datos?.recorridos ?? []),
     [ruta, datos],
   )
-  const grupo = grupos.find((g) => g.clave === elegido) ?? grupos[0]
+  // Por defecto, el recorrido de esa fecha cuyo chofer titular es quien inició sesión; si no, el primero.
+  const delChofer = useMemo(() => recorridoDelChofer(datos?.recorridos ?? [], fecha, usuario.nombre)?.id, [datos, fecha, usuario.nombre])
+  const grupo = grupos.find((g) => g.clave === elegido) ?? grupos.find((g) => g.clave === delChofer) ?? grupos[0]
   const trabajoPorId = useMemo(() => new Map((datos?.trabajos ?? []).map((t) => [t.id, t])), [datos])
 
   // El chofer marca la visita en terreno (RLS: de hoy en adelante). Una a la vez por cliente: un doble toque no duplica.
@@ -67,7 +72,10 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
     const cliente = datos?.clientes.find((c) => c.id === p.clienteId)
     return (
       <li key={p.clienteId} className="flex flex-col gap-3 rounded-lg border-l-8 border-teal-700 bg-white p-4 shadow">
-        <h2 className="text-2xl font-bold">{p.clienteNombre}</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-2xl font-bold">{p.clienteNombre}</h2>
+          <InsigniaParada parada={p} />
+        </div>
         {(p.requiereConfirmacion || p.solicitada) && (
           <p className={`text-lg font-semibold ${p.requiereConfirmacion && p.confirmada === 'no' ? 'text-red-700' : 'text-slate-700'}`}>
             {p.solicitada ? 'Visita extra · ' : ''}{p.requiereConfirmacion ? `Visita: ${ESTADO_VISITA[p.confirmada]}` : ''}
@@ -198,7 +206,7 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
         <Plegable
           key={grupo.clave}
           titulo={`Pasar a retirar (${grupo.paradas.filter((p) => p.entregar.length === 0).length})`}
-          detalle="Clientes de esta ruta sin nada que entregar: pasar por si hay retiro."
+          detalle="Clientes fijos de esta ruta (y visitas pedidas) sin nada que entregar: pasar por si hay retiro."
         >
           <ul className="flex flex-col gap-4">{grupo.paradas.filter((p) => p.entregar.length === 0).map(tarjeta)}</ul>
         </Plegable>

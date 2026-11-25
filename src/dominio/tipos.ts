@@ -67,7 +67,6 @@ export interface Cliente {
   rut: string
   contacto?: string
   direccion?: string
-  recorridoId: string | null
 }
 
 export interface Recorrido {
@@ -76,13 +75,27 @@ export interface Recorrido {
   dia: 1 | 2 | 3 | 4 | 5
   camioneta: string
   lejano: boolean
+  /** Chofer titular (nombre para mostrar, p. ej. "Rodrigo Lagos"); opcional. */
+  chofer?: string
+}
+
+/**
+ * Un cliente en un recorrido (tabla cliente_recorridos). Un cliente puede estar en varios.
+ * `fija`: se visita siempre ese día; si no, "a pedido" (solo si hay algo que entregar o una visita
+ * solicitada o confirmada). `orden`: orden sugerido de visita dentro del recorrido (0 o más).
+ */
+export interface Asignacion {
+  clienteId: string
+  recorridoId: string
+  fija: boolean
+  orden: number
 }
 
 export interface Visita {
   id: string
   fecha: string
   clienteId: string
-  /** Informativo; la ruta usa el recorrido actual del cliente. Null en visitas extra. */
+  /** Informativo; la ruta usa las asignaciones actuales del cliente (cliente_recorridos). Null en visitas extra. */
   recorridoId: string | null
   confirmada: 'si' | 'no' | 'sin_respuesta'
   requiereConfirmacion: boolean

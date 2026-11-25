@@ -1,5 +1,5 @@
-import { normalizarRut, rutValido, type ClienteImportado, type ProductoImportado } from './csv'
-import type { Cliente, Producto } from './tipos'
+import { normalizarRut, ORDEN_MAXIMO, rutValido, type ClienteImportado, type ProductoImportado } from './csv'
+import type { Asignacion, Cliente, Producto } from './tipos'
 
 export interface Plan<T> {
   nuevos: T[]
@@ -18,7 +18,7 @@ function difiere<T extends object>(existente: object, cambios: T): boolean {
  * Reparte los clientes importados entre nuevos, actualizaciones y sin cambios, comparando por RUT
  * normalizado (el RUT guardado puede venir en otro formato). Re-importar el mismo archivo no
  * duplica ni reescribe nada. Los cambios solo traen lo que el archivo informó, así que no pisan
- * el recorrido ni datos que el archivo no tiene.
+ * datos que el archivo no tiene (los recorridos van aparte, en cliente_recorridos).
  */
 export function planificarClientes(existentes: Cliente[], entrantes: ClienteImportado[]): Plan<ClienteImportado> {
   const porRut = new Map(existentes.map((c) => [normalizarRut(c.rut), c]))
@@ -53,7 +53,6 @@ export interface ClienteNuevo {
   rut: string
   contacto?: string
   direccion?: string
-  recorridoId?: string | null
 }
 
 /** Error de regla de negocio al crear un cliente; el mensaje está en español y se muestra tal cual. */
@@ -86,7 +85,7 @@ export function validarClienteNuevo(
   if (rutCrudo === '') errores.push('Escribe el RUT.')
   else if (!rutValido(rut)) errores.push(`El RUT "${rutCrudo}" no es válido. Escríbelo así: 12.345.678-5.`)
   else if (existentes.some((c) => normalizarRut(c.rut) === rut)) errores.push(RUT_DUPLICADO)
-  const cliente: Omit<Cliente, 'id'> = { nombre, rut, recorridoId: datos.recorridoId || null }
+  const cliente: Omit<Cliente, 'id'> = { nombre, rut }
   for (const campo of ['contacto', 'direccion'] as const) {
     const v = datos[campo]?.trim()
     if (!v) continue
@@ -96,4 +95,56 @@ export function validarClienteNuevo(
     cliente[campo] = v
   }
   return { cliente, errores }
+}
+
+// ---- Asignaciones cliente-recorrido ----
+
+/** Reglas de una asignación (como las restricciones de cliente_recorridos); null si es válida. */
+export function validarAsignacion(a: Asignacion): string | null {
+  if (!a.clienteId) return 'Elige el cliente.'
+  if (!a.recorridoId) return 'Elige el recorrido.'
+  if (!Number.isInteger(a.orden) || a.orden < 0 || a.orden > ORDEN_MAXIMO) return `El orden debe ser un número entero de 0 a ${ORDEN_MAXIMO}.`
+  return null
+}
+
+/**
+ * Reparte asignaciones entrantes entre nuevas, actualizaciones (cambia fija u orden) y sin cambios,
+ * por el par (cliente, recorrido). Re-importar el mismo archivo no cambia nada. Un par repetido en
+ * `entrantes` cuenta una vez (el último manda).
+ */
+export function planificarAsignaciones(
+  existentes: Asignacion[],
+  entrantes: Asignacion[],
+): { nuevas: Asignacion[]; actualizaciones: Asignacion[]; sinCambios: number } {
+  const clave = (a: Asignacion) => `${a.clienteId}|${a.recorridoId}`
+  const porPar = new Map(existentes.map((a) => [clave(a), a]))
+  const plan = { nuevas: [] as Asignacion[], actualizaciones: [] as Asignacion[], sinCambios: 0 }
+  // Un mismo par repetido en la entrada se escribe una sola vez (el último manda): un upsert en lote
+  // no puede tocar dos veces la misma fila.
+  const unicas = new Map(entrantes.map((a) => [clave(a), a]))
+  for (const a of unicas.values()) {
+    const actual = porPar.get(clave(a))
+    if (!actual) plan.nuevas.push(a)
+    else if (actual.fija !== a.fija || actual.orden !== a.orden) plan.actualizaciones.push(a)
+    else plan.sinCambios++
+  }
+  return plan
+}
+
+const NOMBRES_DIA = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
+
+/**
+ * Nombre de un recorrido nuevo: el escrito (sin espacios sobrantes) o, si se dejó vacío y hay chofer,
+ * "Día · Chofer" (p. ej. "Lunes · Rodrigo Lagos"), para crear rápido los recorridos de la semana.
+ */
+export function nombreRecorrido(nombre: string, dia: number, chofer?: string): string {
+  const n = nombre.trim()
+  if (n !== '') return n
+  const c = chofer?.trim() ?? ''
+  return c === '' ? '' : `${NOMBRES_DIA[dia]} · ${c}`
+}
+
+/** Orden para un cliente que se agrega al final de un recorrido: el mayor + 1 (1 si está vacío). */
+export function siguienteOrden(asignaciones: Asignacion[], recorridoId: string): number {
+  return asignaciones.filter((a) => a.recorridoId === recorridoId).reduce((m, a) => Math.max(m, a.orden), 0) + 1
 }

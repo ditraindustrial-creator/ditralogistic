@@ -1,4 +1,5 @@
-import type { Area, Cliente, Producto } from './tipos'
+import type { Area, Asignacion, Cliente, Producto, Recorrido } from './tipos'
+import { normalizarNombre } from './ruta'
 
 export interface ErrorFila {
   /** Número de fila del archivo (el encabezado es la fila 1). 0 = error de todo el archivo. */
@@ -136,7 +137,7 @@ export interface MapeoClientes {
   direccion?: string
 }
 
-export type ClienteImportado = Omit<Cliente, 'id' | 'recorridoId'>
+export type ClienteImportado = Omit<Cliente, 'id'>
 
 export function importarClientes(
   filas: Record<string, string>[],
@@ -221,4 +222,90 @@ export function importarProductos(
     productos.push({ codigo, nombre, area })
   })
   return { productos, errores }
+}
+
+export interface MapeoAsignaciones {
+  /** Columna con el nombre del recorrido (como está en la pestaña Recorridos). */
+  recorrido: string
+  /** Columna con el RUT del cliente. */
+  rut: string
+  /** Columna fija (sí/no); sin columna, todas fijas. */
+  fija?: string
+  /** Columna orden (número entero); sin columna o vacío, la posición de la fila en su recorrido. */
+  orden?: string
+}
+
+export const ORDEN_MAXIMO = 100000
+
+function leerFija(s: string): boolean | null {
+  const v = quitarAcentos(s.trim().toLowerCase())
+  if (v === '' || ['si', '1', 'true', 'x'].includes(v)) return true
+  if (['no', '0', 'false'].includes(v)) return false
+  return null
+}
+
+/**
+ * Asignaciones cliente-recorrido desde un CSV (columnas recorrido;rut;fija;orden). El recorrido se
+ * reconoce por nombre sin importar mayúsculas, tildes ni espacios; el cliente por RUT normalizado.
+ * `fija`: sí/si/1/true/x = fija, no/0/false = a pedido, vacío = fija. `orden` vacío = posición de la
+ * fila entre las filas de su recorrido en el archivo (1, 2, 3…). Las filas malas se informan con su
+ * número de fila y las buenas se importan igual. El mismo cliente dos veces en el mismo recorrido:
+ * se conserva la primera fila y la repetida es error.
+ */
+export function importarAsignaciones(
+  filas: Record<string, string>[],
+  mapeo: MapeoAsignaciones,
+  recorridos: Recorrido[],
+  clientes: Cliente[],
+): { asignaciones: Asignacion[]; errores: ErrorFila[] } {
+  const errores = columnasFaltantes(filas, [mapeo.recorrido, mapeo.rut, mapeo.fija, mapeo.orden])
+  if (errores.length > 0) return { asignaciones: [], errores }
+  const recorridosPorNombre = new Map<string, Recorrido[]>()
+  for (const r of recorridos) {
+    const k = normalizarNombre(r.nombre)
+    recorridosPorNombre.set(k, [...(recorridosPorNombre.get(k) ?? []), r])
+  }
+  const clientePorRut = new Map(clientes.map((c) => [normalizarRut(c.rut), c]))
+  const posicion = new Map<string, number>()
+  const vistos = new Map<string, number>()
+  const asignaciones: Asignacion[] = []
+  filas.forEach((f, i) => {
+    const fila = i + 2
+    if (esFilaVacia(f)) return
+    const nombre = (f[mapeo.recorrido] ?? '').trim()
+    const rutCrudo = (f[mapeo.rut] ?? '').trim()
+    if (nombre === '') return void errores.push({ fila, motivo: 'Falta el recorrido.' })
+    const candidatos = recorridosPorNombre.get(normalizarNombre(nombre)) ?? []
+    if (candidatos.length === 0) {
+      return void errores.push({ fila, motivo: `El recorrido "${nombre}" no existe. Créalo en la pestaña Recorridos o revisa cómo está escrito.` })
+    }
+    if (candidatos.length > 1) {
+      return void errores.push({ fila, motivo: `Hay más de un recorrido llamado "${nombre}". Cambia el nombre de uno de ellos en la pestaña Recorridos.` })
+    }
+    const recorrido = candidatos[0]
+    const lugar = (posicion.get(recorrido.id) ?? 0) + 1
+    posicion.set(recorrido.id, lugar)
+    if (rutCrudo === '') return void errores.push({ fila, motivo: 'Falta el RUT.' })
+    const rut = normalizarRut(rutCrudo)
+    if (!RUT_VALIDO.test(rut)) return void errores.push({ fila, motivo: `El RUT "${rutCrudo}" no es válido.` })
+    const cliente = clientePorRut.get(rut)
+    if (!cliente) return void errores.push({ fila, motivo: `No hay ningún cliente con RUT ${rut}. Impórtalo primero en la lista de clientes.` })
+    const fijaCruda = mapeo.fija ? (f[mapeo.fija] ?? '').trim() : ''
+    const fija = leerFija(fijaCruda)
+    if (fija === null) return void errores.push({ fila, motivo: `El valor "${fijaCruda}" de la columna fija no es válido (usa sí o no).` })
+    const ordenCrudo = mapeo.orden ? (f[mapeo.orden] ?? '').trim() : ''
+    let orden = lugar
+    if (ordenCrudo !== '') {
+      if (!/^\d+$/.test(ordenCrudo) || Number(ordenCrudo) > ORDEN_MAXIMO) {
+        return void errores.push({ fila, motivo: `El orden "${ordenCrudo}" no es válido (usa un número entero: 0, 1, 2…).` })
+      }
+      orden = Number(ordenCrudo)
+    }
+    const par = `${cliente.id}|${recorrido.id}`
+    const previa = vistos.get(par)
+    if (previa !== undefined) return void errores.push({ fila, motivo: `Cliente repetido en este recorrido: ya aparece en la fila ${previa}.` })
+    vistos.set(par, fila)
+    asignaciones.push({ clienteId: cliente.id, recorridoId: recorrido.id, fija, orden })
+  })
+  return { asignaciones, errores }
 }

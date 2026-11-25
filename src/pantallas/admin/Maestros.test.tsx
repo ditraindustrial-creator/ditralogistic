@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Maestros from './Maestros'
 import { crearMemoryRepo } from '../../data/memoryRepo'
@@ -107,23 +107,133 @@ describe('Maestros: clientes', () => {
 })
 
 describe('Maestros: recorridos y asignación', () => {
-  it('crea un recorrido con día y marca lejano, y se lo asigna a un cliente', async () => {
-    const repo = crearMemoryRepo({ clientes: [{ id: 'c1', nombre: 'Librería Uno', rut: '1-9', recorridoId: null }] })
+  it('crea un recorrido con día, chofer y lejano; con el nombre vacío se llama "Día · Chofer" y el formulario queda listo para el día siguiente', async () => {
+    const repo = crearMemoryRepo()
     render(<Maestros repo={repo} />)
     await userEvent.click(await screen.findByRole('tab', { name: 'Recorridos' }))
     await userEvent.type(screen.getByLabelText('Nombre del recorrido'), 'Miércoles Rancagua')
     await userEvent.selectOptions(screen.getByLabelText('Día'), 'Miércoles')
     await userEvent.type(screen.getByLabelText('Camioneta'), 'Camioneta 2')
+    await userEvent.type(screen.getByLabelText('Chofer titular (opcional)'), 'Rodrigo Lagos')
     await userEvent.click(screen.getByLabelText('Lejano'))
     await userEvent.click(screen.getByRole('button', { name: 'Guardar recorrido' }))
-    expect(await screen.findByText('Miércoles Rancagua · Miércoles · Camioneta 2 · lejano')).toBeInTheDocument()
-    expect(await repo.listarRecorridos()).toMatchObject([{ nombre: 'Miércoles Rancagua', dia: 3, camioneta: 'Camioneta 2', lejano: true }])
+    expect(await screen.findByText('Miércoles Rancagua · Miércoles · Camioneta 2 · Chofer: Rodrigo Lagos · lejano')).toBeInTheDocument()
+    expect(await repo.listarRecorridos()).toMatchObject([{ nombre: 'Miércoles Rancagua', dia: 3, camioneta: 'Camioneta 2', lejano: true, chofer: 'Rodrigo Lagos' }])
+    // Rápido: chofer y camioneta se conservan, el día avanza y el nombre vacío se arma solo.
+    expect(screen.getByLabelText('Día')).toHaveValue('4')
+    expect(screen.getByLabelText('Nombre del recorrido')).toHaveValue('')
+    expect(screen.getByLabelText('Chofer titular (opcional)')).toHaveValue('Rodrigo Lagos')
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar recorrido' }))
+    expect(await screen.findByText('Jueves · Rodrigo Lagos · Jueves · Camioneta 2 · Chofer: Rodrigo Lagos · lejano')).toBeInTheDocument()
+    expect(screen.getByLabelText('Día')).toHaveValue('5')
+  })
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Clientes' }))
-    await userEvent.selectOptions(await screen.findByLabelText('Recorrido de Librería Uno'), 'Miércoles Rancagua (Miércoles, lejano)')
-    expect((await repo.listarClientes())[0].recorridoId).toBe((await repo.listarRecorridos())[0].id)
-    await userEvent.selectOptions(screen.getByLabelText('Recorrido de Librería Uno'), 'Sin recorrido')
-    expect((await repo.listarClientes())[0].recorridoId).toBeNull()
+  it('asigna un cliente a varios recorridos (fijo o a pedido, con orden) y lo quita de uno', async () => {
+    const repo = crearMemoryRepo({
+      clientes: [{ id: 'c1', nombre: 'Librería Uno', rut: '1-9' }, { id: 'c2', nombre: 'Otra', rut: '2-7' }],
+      recorridos: [
+        { id: 'lun', nombre: 'Lunes · Rodrigo Lagos', dia: 1, camioneta: 'C1', lejano: false },
+        { id: 'mie', nombre: 'Miércoles · Angelo', dia: 3, camioneta: 'C2', lejano: true },
+      ],
+      asignaciones: [{ clienteId: 'c2', recorridoId: 'mie', fija: true, orden: 3 }],
+    })
+    render(<Maestros repo={repo} />)
+    const panel = await screen.findByRole('group', { name: 'Recorridos de Librería Uno' })
+    expect(within(panel).getByText('Sin recorrido.')).toBeInTheDocument()
+    await userEvent.selectOptions(within(panel).getByLabelText('Agregar Librería Uno a un recorrido'), 'Miércoles · Angelo (Miércoles, lejano)')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Agregar' }))
+    // entra al final del recorrido (después del orden 3 de "Otra"), como fijo
+    expect(await within(panel).findByLabelText('Orden en Miércoles · Angelo')).toHaveValue(4)
+    await userEvent.selectOptions(within(panel).getByLabelText('Agregar Librería Uno a un recorrido'), 'Lunes · Rodrigo Lagos (Lunes)')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Agregar' }))
+    expect(await within(panel).findByLabelText('Orden en Lunes · Rodrigo Lagos')).toHaveValue(1)
+    // ya no se ofrecen los recorridos que tiene
+    expect(within(panel).queryByLabelText('Agregar Librería Uno a un recorrido')).not.toBeInTheDocument()
+
+    await userEvent.click(within(panel).getByLabelText('Fijo en Lunes · Rodrigo Lagos'))
+    expect(await within(panel).findByText('a pedido')).toBeInTheDocument()
+    const orden = within(panel).getByLabelText('Orden en Lunes · Rodrigo Lagos')
+    await userEvent.clear(orden)
+    await userEvent.type(orden, '7')
+    await userEvent.tab()
+    await waitFor(async () =>
+      expect((await repo.listarAsignaciones()).filter((a) => a.clienteId === 'c1')).toEqual([
+        { clienteId: 'c1', recorridoId: 'mie', fija: true, orden: 4 },
+        { clienteId: 'c1', recorridoId: 'lun', fija: false, orden: 7 },
+      ]),
+    )
+    await userEvent.click(within(panel).getByRole('button', { name: 'Quitar Librería Uno de Miércoles · Angelo' }))
+    await waitFor(async () => expect((await repo.listarAsignaciones()).filter((a) => a.clienteId === 'c1')).toEqual([
+      { clienteId: 'c1', recorridoId: 'lun', fija: false, orden: 7 },
+    ]))
+    expect(within(panel).queryByLabelText('Orden en Miércoles · Angelo')).not.toBeInTheDocument()
+  })
+
+  it('un orden inválido no se guarda y se avisa en español', async () => {
+    const repo = crearMemoryRepo({
+      clientes: [{ id: 'c1', nombre: 'Librería Uno', rut: '1-9' }],
+      recorridos: [{ id: 'lun', nombre: 'Lunes', dia: 1, camioneta: 'C1', lejano: false }],
+      asignaciones: [{ clienteId: 'c1', recorridoId: 'lun', fija: true, orden: 2 }],
+    })
+    render(<Maestros repo={repo} />)
+    const orden = await screen.findByLabelText('Orden en Lunes')
+    await userEvent.clear(orden)
+    await userEvent.type(orden, '-3')
+    await userEvent.tab()
+    expect(await screen.findByRole('alert')).toHaveTextContent('El orden debe ser un número entero de 0 a 100000.')
+    expect(await repo.listarAsignaciones()).toEqual([{ clienteId: 'c1', recorridoId: 'lun', fija: true, orden: 2 }])
+  })
+
+  it('quien no es de gestión ve los recorridos del cliente pero no puede cambiarlos', async () => {
+    const repo = crearMemoryRepo({
+      usuario: { id: 'u', nombre: 'Pedro', rol: 'chofer' },
+      clientes: [{ id: 'c1', nombre: 'Librería Uno', rut: '1-9' }],
+      recorridos: [{ id: 'lun', nombre: 'Lunes', dia: 1, camioneta: 'C1', lejano: false }],
+      asignaciones: [{ clienteId: 'c1', recorridoId: 'lun', fija: false, orden: 2 }],
+    })
+    render(<Maestros repo={repo} usuario={{ id: 'u', nombre: 'Pedro', rol: 'chofer' }} />)
+    const panel = await screen.findByRole('group', { name: 'Recorridos de Librería Uno' })
+    expect(within(panel).getByText('Lunes (Lunes) · a pedido · orden 2')).toBeInTheDocument()
+    expect(within(panel).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Archivo de recorridos de clientes (CSV)')).not.toBeInTheDocument()
+  })
+
+  it('importa las asignaciones desde un CSV (recorrido;rut;fija;orden): nuevas, errores por fila e idempotente', async () => {
+    const repo = crearMemoryRepo({
+      clientes: [{ id: 'c1', nombre: 'Librería Uno', rut: '11.111.111-1' }, { id: 'c2', nombre: 'Otra', rut: '22222222-2' }],
+      recorridos: [
+        { id: 'lun', nombre: 'Lunes · Rodrigo Lagos', dia: 1, camioneta: 'C1', lejano: false },
+        { id: 'mie', nombre: 'Miércoles · Angelo', dia: 3, camioneta: 'C2', lejano: false },
+      ],
+    })
+    render(<Maestros repo={repo} />)
+    const csv = '\uFEFFrecorrido;rut;fija;orden\r\nLUNES · RODRIGO LAGOS;11111111-1;sí;1\r\nmiercoles · angelo;22.222.222-2;no;\r\nMartes · Nadie;11111111-1;;\r\nLunes · Rodrigo Lagos;33.333.333-3;;\r\n'
+    const input = (await screen.findByLabelText('Archivo de recorridos de clientes (CSV)')) as HTMLInputElement
+    for (const esperado of [
+      '2 asignaciones nuevas, 0 actualizadas, 0 sin cambios, 2 errores.',
+      '0 asignaciones nuevas, 0 actualizadas, 2 sin cambios, 2 errores.',
+    ]) {
+      await userEvent.upload(input, archivo(csv, 'asignaciones.csv'))
+      expect(input.value).toBe('')
+      // las columnas se adivinan por el encabezado
+      expect(await screen.findByLabelText('Columna del recorrido')).toHaveValue('recorrido')
+      expect(screen.getByLabelText('Columna del RUT del cliente')).toHaveValue('rut')
+      expect(screen.getByLabelText('Columna fija (opcional)')).toHaveValue('fija')
+      expect(screen.getByLabelText('Columna del orden (opcional)')).toHaveValue('orden')
+      await userEvent.click(screen.getByRole('button', { name: 'Importar recorridos de clientes' }))
+      expect(await screen.findByText(esperado)).toBeInTheDocument()
+    }
+    expect(within(screen.getByRole('list', { name: 'Errores de importación' })).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Fila 4: El recorrido "Martes · Nadie" no existe. Créalo en la pestaña Recorridos o revisa cómo está escrito.',
+      'Fila 5: No hay ningún cliente con RUT 33333333-3. Impórtalo primero en la lista de clientes.',
+    ])
+    expect(await repo.listarAsignaciones()).toEqual([
+      { clienteId: 'c1', recorridoId: 'lun', fija: true, orden: 1 },
+      { clienteId: 'c2', recorridoId: 'mie', fija: false, orden: 1 },
+    ])
+    expect(within(screen.getByRole('group', { name: 'Recorridos de Otra' })).getByLabelText('Orden en Miércoles · Angelo')).toHaveValue(1)
   })
 
   it('edita un recorrido existente sin crear otro', async () => {

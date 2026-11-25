@@ -107,7 +107,7 @@ export default function App({ repo }: { repo: Repo }) {
           <button className="mb-4 rounded border px-4 py-2 print:hidden" onClick={() => setPantalla(null)}>← Menú</button>
           <h1 className="text-2xl font-bold">{actual.titulo}</h1>
           {actual.id === 'admin' ? (
-            <div className="mt-4"><Maestros repo={repo} /></div>
+            <div className="mt-4"><Maestros repo={repo} usuario={usuario} /></div>
           ) : actual.id === 'recepcion' ? (
             <div className="mt-4"><Recepcion repo={repo} usuario={usuario} /></div>
           ) : actual.id === 'taller' ? (

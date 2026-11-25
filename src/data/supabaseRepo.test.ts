@@ -49,9 +49,9 @@ describe('errorDeMovimiento', () => {
 })
 
 describe('maestros: filas de la base a tipos', () => {
-  it('cliente: null pasa a ausente y el recorrido se conserva', () => {
-    expect(filaACliente({ id: 'c', nombre: 'A', rut: '1-9', contacto: null, direccion: 'Calle', recorrido_id: null })).toEqual({
-      id: 'c', nombre: 'A', rut: '1-9', direccion: 'Calle', recorridoId: null,
+  it('cliente: null pasa a ausente', () => {
+    expect(filaACliente({ id: 'c', nombre: 'A', rut: '1-9', contacto: null, direccion: 'Calle' })).toEqual({
+      id: 'c', nombre: 'A', rut: '1-9', direccion: 'Calle',
     })
   })
   it('recorrido y producto', () => {

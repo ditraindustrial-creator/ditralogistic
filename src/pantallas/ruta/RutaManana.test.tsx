@@ -5,7 +5,7 @@ import RutaManana from './RutaManana'
 import { crearMemoryRepo } from '../../data/memoryRepo'
 import type { Repo } from '../../data/repo'
 import { ErrorVisita } from '../../dominio/ruta'
-import type { Etapa, Modalidad, Movimiento, Rol, Trabajo, Visita } from '../../dominio/tipos'
+import type { Asignacion, Etapa, Modalidad, Movimiento, Rol, Trabajo, Visita } from '../../dominio/tipos'
 
 const etapas: Etapa[] = [
   { id: 'a1', area: 'afilado', orden: 1, nombre: 'Recibido', esListo: false, esFinal: false },
@@ -23,7 +23,16 @@ const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d:
 const HOY = '2026-11-24T15:00:00Z'
 const MANANA = '2026-11-25'
 
-function montar(opciones: { rol?: Rol; envolver?: (r: Repo) => Repo; visitas?: Visita[] } = {}) {
+// Como antes de Task 10, un recorrido fijo por cliente; c3 y c7 sin recorrido. `asignaciones` las reemplaza.
+const ASIGNACIONES: Asignacion[] = [
+  { clienteId: 'c1', recorridoId: 'r1', fija: true, orden: 0 },
+  { clienteId: 'c2', recorridoId: 'r2', fija: true, orden: 0 },
+  { clienteId: 'c4', recorridoId: 'r1', fija: true, orden: 0 },
+  { clienteId: 'c5', recorridoId: 'r1', fija: true, orden: 0 },
+  { clienteId: 'c6', recorridoId: 'r3', fija: true, orden: 0 },
+]
+
+function montar(opciones: { rol?: Rol; envolver?: (r: Repo) => Repo; visitas?: Visita[]; asignaciones?: Asignacion[] } = {}) {
   const base = crearMemoryRepo({
     usuario: { id: 'u1', nombre: 'Ana', rol: opciones.rol ?? 'secretaria' },
     etapas,
@@ -33,13 +42,13 @@ function montar(opciones: { rol?: Rol; envolver?: (r: Repo) => Repo; visitas?: V
       { id: 'r3', nombre: 'Centro', dia: 1, camioneta: 'Camioneta A', lejano: false },
     ],
     clientes: [
-      { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: 'r1' },
-      { id: 'c2', nombre: 'Libros del Norte', rut: '2-7', recorridoId: 'r2' },
-      { id: 'c3', nombre: 'Sin Ruta SpA', rut: '3-5', recorridoId: null },
-      { id: 'c4', nombre: 'Mostrador Ltda', rut: '4-3', recorridoId: 'r1' },
-      { id: 'c5', nombre: 'Encomiendas SA', rut: '5-1', recorridoId: 'r1' },
-      { id: 'c6', nombre: 'Cliente Lunes', rut: '6-K', recorridoId: 'r3' },
-      { id: 'c7', nombre: 'Nuevo Cliente', rut: '7-8', recorridoId: null },
+      { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' },
+      { id: 'c2', nombre: 'Libros del Norte', rut: '2-7' },
+      { id: 'c3', nombre: 'Sin Ruta SpA', rut: '3-5' },
+      { id: 'c4', nombre: 'Mostrador Ltda', rut: '4-3' },
+      { id: 'c5', nombre: 'Encomiendas SA', rut: '5-1' },
+      { id: 'c6', nombre: 'Cliente Lunes', rut: '6-K' },
+      { id: 'c7', nombre: 'Nuevo Cliente', rut: '7-8' },
     ],
     trabajos: [
       trab('t1', 11, 'c1', 'ruta_propia'), trab('t2', 12, 'c2', 'ruta_propia'), trab('t3', 13, 'c3', 'ruta_propia'),
@@ -59,6 +68,7 @@ function montar(opciones: { rol?: Rol; envolver?: (r: Repo) => Repo; visitas?: V
       return [mov(`m${i}`, l, n, null, 'a4')]
     }),
     visitas: opciones.visitas,
+    asignaciones: opciones.asignaciones ?? ASIGNACIONES,
   })
   const repo = opciones.envolver ? opciones.envolver(base) : base
   render(<RutaManana repo={repo} usuario={{ id: 'u1', nombre: 'Ana', rol: opciones.rol ?? 'secretaria' }} />)
@@ -395,6 +405,47 @@ describe('RutaManana', () => {
     const controles = await screen.findByRole('group', { name: 'Controles de la ruta' })
     expect(controles).toHaveClass('print:hidden')
     expect(screen.getByText(/miércoles 25 de noviembre/i)).toBeInTheDocument()
+  })
+
+  describe('varios recorridos y clientes a pedido (Task 10)', () => {
+    const asig: Asignacion[] = [
+      { clienteId: 'c1', recorridoId: 'r1', fija: true, orden: 2 },
+      { clienteId: 'c2', recorridoId: 'r2', fija: true, orden: 0 },
+      { clienteId: 'c4', recorridoId: 'r1', fija: true, orden: 0 },
+      { clienteId: 'c6', recorridoId: 'r3', fija: true, orden: 0 }, // fijo los lunes...
+      { clienteId: 'c6', recorridoId: 'r1', fija: false, orden: 1 }, // ...y a pedido los miércoles
+      { clienteId: 'c7', recorridoId: 'r1', fija: false, orden: 0 }, // a pedido, sin nada listo
+    ]
+    it('el cliente de lunes que también va a pedido el miércoles sale el miércoles con lo listo, marcado "A pedido" y en su orden', async () => {
+      montar({ asignaciones: asig })
+      const norte = await seccion(/Norte · Camioneta A/)
+      expect(within(norte).getAllByText(/^(Imprenta Sur|Cliente Lunes)$/).map((e) => e.textContent)).toEqual(['Cliente Lunes', 'Imprenta Sur'])
+      const lunes = within(norte).getByText('Cliente Lunes').closest('li')!
+      expect(lunes).toHaveTextContent('Lima 3')
+      expect(within(lunes).getByText('A pedido')).toBeInTheDocument()
+      expect(within(within(norte).getByText('Imprenta Sur').closest('li')!).getByText('Fijo')).toBeInTheDocument()
+      // ya no queda nada "para otros días de ruta"
+      expect(screen.queryByText(/listos? para otros días de ruta/)).not.toBeInTheDocument()
+      // el cliente a pedido sin nada que entregar ni visita pedida no aparece; el fijo sin nada sí (pasar a retirar)
+      expect(screen.queryByText('Nuevo Cliente', { selector: 'span' })).not.toBeInTheDocument()
+      await userEvent.click(await mostrarRetirar())
+      const retirar = (await screen.findByRole('heading', { name: /^Pasar a retirar/ })).closest('section')!
+      expect(within(retirar).getByText('Mostrador Ltda')).toBeInTheDocument()
+      expect(within(retirar).queryByText('Nuevo Cliente')).not.toBeInTheDocument()
+    })
+    it('un cliente a pedido con la visita solicitada para ese día sí sale (en "Pasar a retirar")', async () => {
+      montar({ asignaciones: asig, visitas: [{ id: 'v1', fecha: MANANA, clienteId: 'c7', recorridoId: null, confirmada: 'sin_respuesta', requiereConfirmacion: false, solicitada: true }] })
+      await userEvent.click(await mostrarRetirar())
+      const retirar = (await screen.findByRole('heading', { name: /^Pasar a retirar/ })).closest('section')!
+      const tarjeta = within(retirar).getByText('Nuevo Cliente').closest('li')!
+      expect(within(tarjeta).getByText('A pedido')).toBeInTheDocument()
+    })
+    it('lo listo de un cliente cuyos recorridos son de otros días no se pierde: se avisa aparte', async () => {
+      montar({ asignaciones: [{ clienteId: 'c1', recorridoId: 'r3', fija: true, orden: 0 }, { clienteId: 'c6', recorridoId: 'r3', fija: true, orden: 0 }] })
+      expect(await screen.findByText('Hay 2 trabajos listos para otros días de ruta (no entra en esta fecha).')).toBeInTheDocument()
+      // c2 (Libros del Norte) ya no tiene recorrido: va a "Sin recorrido"
+      expect(within(await seccion('Sin recorrido')).getByText('Libros del Norte')).toBeInTheDocument()
+    })
   })
 
   it('un chofer también puede verla', async () => {

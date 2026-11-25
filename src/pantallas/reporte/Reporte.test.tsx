@@ -22,7 +22,7 @@ function montar(movimientos: Movimiento[]) {
   const repo = crearMemoryRepo({
     usuario: { id: 'u', nombre: 'Ana', rol: 'jefe_taller' },
     etapas,
-    clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null }],
+    clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }],
     trabajos: [trab('t1', 11), trab('t2', 12)],
     lineas: [lin('l1', 't1', 3, 'Libro'), lin('l2', 't2', 2, 'Cuaderno')],
     movimientos,

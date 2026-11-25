@@ -1,4 +1,5 @@
-import type { Area, Cliente, Etapa, Linea, Modalidad, Movimiento, Recorrido, Trabajo } from './tipos'
+import type { Area, Asignacion, Cliente, Etapa, Linea, Modalidad, Movimiento, Recorrido, Trabajo } from './tipos'
+import { diaSemana } from './fechas'
 
 /** Todo lo que hace falta para calcular el estado de la operación (entrada de `resumenListo`). */
 export interface DatosOperacion {
@@ -8,6 +9,21 @@ export interface DatosOperacion {
   etapas: Etapa[]
   clientes: Cliente[]
   recorridos: Recorrido[]
+  /** Qué clientes van en qué recorridos (cliente_recorridos); un cliente puede estar en varios. */
+  asignaciones: Asignacion[]
+}
+
+/** Un recorrido del cliente (para mostrar "Rutas: Lun · Mié · Vie"). */
+export interface RutaCliente {
+  recorridoId: string
+  recorridoNombre: string
+  dia: number
+}
+
+/** La próxima vez que pasa la camioneta: el primer día de ruta del cliente desde hoy (hoy incluido). */
+export interface ProximaRuta extends RutaCliente {
+  /** 'YYYY-MM-DD' (día de Chile). */
+  fecha: string
 }
 
 export interface FilaListo {
@@ -26,19 +42,50 @@ export interface FilaListo {
   pendientes: number
   /** Instante (ISO) del último movimiento hacia una etapa "listo"; null si no hay unidades listas. */
   listoDesde: string | null
-  recorrido: string | null
-  dia: number | null
+  /** Todos los recorridos del cliente, de lunes a viernes. Vacío si no tiene ninguno. */
+  rutas: RutaCliente[]
+  /** Próximo día de ruta desde `hoy` (hoy cuenta); null si el cliente no tiene recorrido. */
+  proximaRuta: ProximaRuta | null
+}
+
+/** `fecha` + `n` días, en días calendario (sin horas: no le afecta el cambio de hora). */
+function sumarDias(fecha: string, n: number): string {
+  const [a, m, d] = fecha.split('-').map(Number)
+  const s = new Date(Date.UTC(a, m - 1, d + n))
+  const dos = (x: number) => String(x).padStart(2, '0')
+  return `${s.getUTCFullYear()}-${dos(s.getUTCMonth() + 1)}-${dos(s.getUTCDate())}`
 }
 
 /**
- * Una fila por trabajo en curso: cuántas unidades están listas, desde cuándo y en qué recorrido y
- * día se entregan. Los trabajos totalmente entregados (todas las unidades en una etapa final) se
- * omiten. Recorre cada lista una sola vez: O(trabajos + líneas + movimientos).
+ * Una fila por trabajo en curso: cuántas unidades están listas, desde cuándo, en qué recorridos va
+ * el cliente y cuándo es su próxima ruta desde `hoy` ('YYYY-MM-DD' en Chile, p. ej.
+ * diaLocal(new Date().toISOString())). Si hoy es día de ruta del cliente, la próxima es hoy; con dos
+ * recorridos el mismo día gana el de menor orden y luego el nombre. Los trabajos totalmente entregados
+ * (todas las unidades en una etapa final) se omiten. O(trabajos + líneas + movimientos + asignaciones).
  */
-export function resumenListo(datos: DatosOperacion): FilaListo[] {
+export function resumenListo(datos: DatosOperacion, hoy: string): FilaListo[] {
+  const diaHoy = diaSemana(hoy) // valida el formato
   const etapaPorId = new Map(datos.etapas.map((e) => [e.id, e]))
   const clientePorId = new Map(datos.clientes.map((c) => [c.id, c]))
   const recorridoPorId = new Map(datos.recorridos.map((r) => [r.id, r]))
+
+  // Rutas de cada cliente (solo recorridos que existen) y su próxima ruta.
+  const rutasDe = new Map<string, { ruta: RutaCliente; orden: number }[]>()
+  for (const a of datos.asignaciones) {
+    const r = recorridoPorId.get(a.recorridoId)
+    if (!r) continue
+    const lista = rutasDe.get(a.clienteId) ?? []
+    lista.push({ ruta: { recorridoId: r.id, recorridoNombre: r.nombre, dia: r.dia }, orden: a.orden })
+    rutasDe.set(a.clienteId, lista)
+  }
+  const salto = (dia: number) => (dia - diaHoy + 7) % 7
+  const infoRutas = new Map<string, { rutas: RutaCliente[]; proximaRuta: ProximaRuta | null }>()
+  for (const [clienteId, lista] of rutasDe) {
+    const porNombre = (x: RutaCliente, y: RutaCliente) => x.recorridoNombre.localeCompare(y.recorridoNombre, 'es') || (x.recorridoId < y.recorridoId ? -1 : 1)
+    const rutas = lista.map((x) => x.ruta).sort((x, y) => x.dia - y.dia || porNombre(x, y))
+    const primera = [...lista].sort((x, y) => salto(x.ruta.dia) - salto(y.ruta.dia) || x.orden - y.orden || porNombre(x.ruta, y.ruta))[0]
+    infoRutas.set(clienteId, { rutas, proximaRuta: { ...primera.ruta, fecha: sumarDias(hoy, salto(primera.ruta.dia)) } })
+  }
 
   // Unidades por trabajo: pedidas, listas y en etapa final; y el último movimiento hacia "listo".
   interface Acum { total: number; listas: number; finales: number; listoDesde: string | null }
@@ -70,7 +117,7 @@ export function resumenListo(datos: DatosOperacion): FilaListo[] {
     const a = acum.get(t.id)!
     if (a.total > 0 && a.finales >= a.total) continue
     const cliente = clientePorId.get(t.clienteId)
-    const recorrido = cliente?.recorridoId ? recorridoPorId.get(cliente.recorridoId) : undefined
+    const info = infoRutas.get(t.clienteId)
     filas.push({
       trabajoId: t.id,
       numero: t.numero,
@@ -83,8 +130,8 @@ export function resumenListo(datos: DatosOperacion): FilaListo[] {
       entregadas: a.finales,
       pendientes: a.total - a.finales,
       listoDesde: a.listas > 0 ? a.listoDesde : null,
-      recorrido: recorrido?.nombre ?? null,
-      dia: recorrido?.dia ?? null,
+      rutas: info?.rutas ?? [],
+      proximaRuta: info?.proximaRuta ?? null,
     })
   }
   return filas

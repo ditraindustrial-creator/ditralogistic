@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
-import { diaSemana, siguienteDiaHabil } from '../../dominio/fechas'
+import { diaLocal, diaSemana, siguienteDiaHabil } from '../../dominio/fechas'
 import { lineasEntregables } from '../../dominio/entrega'
 import { puedeEntregar } from '../../dominio/permisos'
 import { resumenListo, type FilaListo } from '../../dominio/listo'
@@ -10,7 +10,7 @@ import type { Cliente, Modalidad, UsuarioActual } from '../../dominio/tipos'
 import Entrega from '../entrega/Entrega'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import { useFechaPorDefecto } from '../useFechaPorDefecto'
-import { agruparParadas, ControlVisita, ESTADO_VISITA, fechaLarga, NOMBRES_SALIDA, Plegable, textoProductos, useVisitas } from './comun'
+import { agruparParadas, ControlVisita, ESTADO_VISITA, fechaLarga, InsigniaParada, NOMBRES_SALIDA, Plegable, textoProductos, useVisitas } from './comun'
 
 const ERROR_VISITA = 'No se pudo guardar la visita. Revisa tu conexión e inténtalo de nuevo.'
 const ERROR_SALIDA = 'No se pudo cambiar la salida. Revisa tu conexión e inténtalo de nuevo.'
@@ -34,9 +34,10 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
   const ocupado = useRef(new Set<string>())
   const [, repintar] = useState(0)
 
-  const filas = useMemo(() => (datos ? resumenListo(datos) : null), [datos])
+  // `hoy` solo alimenta la "próxima ruta" de cada fila; esta pantalla no la muestra.
+  const filas = useMemo(() => (datos ? resumenListo(datos, diaLocal(new Date().toISOString())) : null), [datos])
   const ruta = useMemo(
-    () => (datos && filas && visitas ? armarRuta(fecha, filas, datos.clientes, datos.recorridos, visitas) : null),
+    () => (datos && filas && visitas ? armarRuta(fecha, filas, datos.clientes, datos.recorridos, datos.asignaciones, visitas) : null),
     [datos, filas, visitas, fecha],
   )
 
@@ -70,7 +71,7 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
       await recargar() // los trabajos no están en Realtime: se recarga después de escribir
     }, ERROR_SALIDA)
 
-  // Lo listo por ruta propia que no cae en ninguna lista de esta fecha (su recorrido sale otro día).
+  // Lo listo por ruta propia que no cae en ninguna lista de esta fecha (sus recorridos salen otros días).
   const otroDia = useMemo(() => {
     if (!filas || !ruta) return 0
     const vistos = new Set([...ruta.paradas.flatMap((p) => p.entregar), ...ruta.sinRecorrido].map((f) => f.trabajoId))
@@ -87,7 +88,7 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
     return (
       <li key={p.clienteId} className="flex flex-col gap-2 rounded border-l-8 border-teal-700 bg-white p-3 shadow-sm print:shadow-none">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <span className="text-lg font-semibold">{p.clienteNombre}</span>
+          <span className="text-lg font-semibold"><span>{p.clienteNombre}</span> <InsigniaParada parada={p} /></span>
           {(p.requiereConfirmacion || p.solicitada) && (
             <span className="text-sm text-slate-700">
               {p.solicitada ? 'Visita extra · ' : ''}{p.requiereConfirmacion ? `Visita: ${ESTADO_VISITA[p.confirmada]}` : ''}
@@ -193,7 +194,7 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
           {gruposRetirar.length > 0 && (
             <Plegable
               titulo={`Pasar a retirar (${ruta.pasarARetirar.length})`}
-              detalle={`Clientes del recorrido sin nada que entregar${porConfirmar > 0 ? ` · ${porConfirmar} por confirmar` : ''}.`}
+              detalle={`Clientes fijos del recorrido (y visitas pedidas) sin nada que entregar${porConfirmar > 0 ? ` · ${porConfirmar} por confirmar` : ''}.`}
             >
               {gruposRetirar.map((g) => (
                 <section key={g.clave} aria-labelledby={`r-${g.clave}`} className="flex flex-col gap-2">
@@ -211,7 +212,7 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
 
           <FilasSueltas
             titulo="Sin recorrido"
-            ayuda="Listo para la camioneta, pero el cliente no tiene recorrido. Asígnale uno en Administración o cambia la salida."
+            ayuda="Listo para la camioneta, pero el cliente no está en ningún recorrido. Asígnale uno en Administración o cambia la salida."
             filas={ruta.sinRecorrido}
             datos={datos}
             ocupado={(f) => ocupado.current.has(`salida-${f.trabajoId}`)}

@@ -34,10 +34,16 @@ function montar(opciones: { rol?: Rol; envolver?: (r: Repo) => Repo; visitas?: V
       ...(dos ? [{ id: 'r2', nombre: 'Costa', dia: 2 as const, camioneta: 'Camioneta B', lejano: true }] : []),
     ],
     clientes: [
-      { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: 'r1' },
-      { id: 'c2', nombre: 'Libros del Norte', rut: '2-7', recorridoId: 'r1' },
-      { id: 'c3', nombre: 'Cliente Costa', rut: '3-5', recorridoId: dos ? 'r2' : 'r1' },
-      { id: 'c4', nombre: 'Confirmado Sin Nada', rut: '4-3', recorridoId: dos ? 'r2' : 'r1' },
+      { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' },
+      { id: 'c2', nombre: 'Libros del Norte', rut: '2-7' },
+      { id: 'c3', nombre: 'Cliente Costa', rut: '3-5' },
+      { id: 'c4', nombre: 'Confirmado Sin Nada', rut: '4-3' },
+    ],
+    asignaciones: [
+      { clienteId: 'c1', recorridoId: 'r1', fija: true, orden: 0 },
+      { clienteId: 'c2', recorridoId: 'r1', fija: true, orden: 0 },
+      { clienteId: 'c3', recorridoId: dos ? 'r2' : 'r1', fija: true, orden: 0 },
+      { clienteId: 'c4', recorridoId: dos ? 'r2' : 'r1', fija: true, orden: 0 },
     ],
     trabajos: opciones.trabajos ?? [trab('t1', 11, 'c1'), trab('t2', 12, 'c2'), trab('t3', 13, 'c3')],
     lineas: [
@@ -95,6 +101,37 @@ describe('HojaChofer', () => {
       await userEvent.click(within(grupo).getByRole('button', { name: /Sur/ }))
       expect(await screen.findByRole('heading', { name: 'Imprenta Sur' })).toBeInTheDocument()
       expect(screen.queryByRole('heading', { name: 'Cliente Costa' })).not.toBeInTheDocument()
+    })
+    it('arranca en el recorrido del día cuyo chofer es quien inició sesión (sin importar mayúsculas ni tildes) y puede cambiar', async () => {
+      montar({
+        envolver: (r) => ({
+          ...r,
+          cargarTodo: async () => {
+            const d = await r.cargarTodo()
+            return { ...d, recorridos: d.recorridos.map((x) => (x.id === 'r1' ? { ...x, chofer: 'PÉDRO' } : { ...x, chofer: 'Angelo' })) }
+          },
+        }),
+      })
+      const grupo = await screen.findByRole('group', { name: 'Recorrido' })
+      expect(within(grupo).getByRole('button', { name: /Sur/ })).toHaveAttribute('aria-pressed', 'true')
+      const imprenta = await tarjeta('Imprenta Sur')
+      expect(within(imprenta).getByText('Fijo')).toBeInTheDocument()
+      await userEvent.click(within(grupo).getByRole('button', { name: /Costa/ }))
+      expect(await screen.findByRole('heading', { name: 'Cliente Costa' })).toBeInTheDocument()
+    })
+    it('un cliente a pedido con algo listo sale marcado "A pedido"; a pedido sin nada, no sale', async () => {
+      montar({
+        dosRecorridos: false,
+        envolver: (r) => ({
+          ...r,
+          cargarTodo: async () => {
+            const d = await r.cargarTodo()
+            return { ...d, asignaciones: d.asignaciones.map((a) => (a.clienteId === 'c2' || a.clienteId === 'c4' ? { ...a, fija: false } : a)) }
+          },
+        }),
+      })
+      expect(within(await tarjeta('Libros del Norte')).getByText('A pedido')).toBeInTheDocument()
+      expect(screen.queryByText('Confirmado Sin Nada')).not.toBeInTheDocument() // ni siquiera plegado en "Pasar a retirar"
     })
     it('con un solo recorrido no hay selector', async () => {
       montar({ dosRecorridos: false })

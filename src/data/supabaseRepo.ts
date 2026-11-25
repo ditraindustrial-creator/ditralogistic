@@ -1,7 +1,9 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Repo } from './repo'
-import type { Area, Cliente, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
-import { ErrorCliente, planificarClientes, planificarProductos, RUT_DUPLICADO, validarClienteNuevo } from '../dominio/maestros'
+import type { Area, Asignacion, Cliente, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
+import {
+  ErrorCliente, planificarAsignaciones, planificarClientes, planificarProductos, RUT_DUPLICADO, validarAsignacion, validarClienteNuevo,
+} from '../dominio/maestros'
 import { ErrorTrabajo, MODALIDADES, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
 import { ErrorEntrega, validarEntradaEntrega, validarTransporte } from '../dominio/entrega'
 import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
@@ -108,7 +110,6 @@ interface FilaCliente {
   rut: string
   contacto: string | null
   direccion: string | null
-  recorrido_id: string | null
 }
 interface FilaRecorrido {
   id: string
@@ -116,7 +117,17 @@ interface FilaRecorrido {
   dia: number
   camioneta: string
   lejano: boolean
+  chofer?: string | null
 }
+interface FilaAsignacion {
+  cliente_id: string
+  recorrido_id: string
+  fija: boolean
+  orden: number
+}
+const COLUMNAS_CLIENTE = 'id, nombre, rut, contacto, direccion'
+const COLUMNAS_RECORRIDO = 'id, nombre, dia, camioneta, lejano, chofer'
+const COLUMNAS_ASIGNACION = 'cliente_id, recorrido_id, fija, orden'
 interface FilaProducto {
   id: string
   codigo: string
@@ -125,13 +136,18 @@ interface FilaProducto {
 }
 
 export function filaACliente(f: FilaCliente): Cliente {
-  const c: Cliente = { id: f.id, nombre: f.nombre, rut: f.rut, recorridoId: f.recorrido_id }
+  const c: Cliente = { id: f.id, nombre: f.nombre, rut: f.rut }
   if (f.contacto) c.contacto = f.contacto
   if (f.direccion) c.direccion = f.direccion
   return c
 }
 export function filaARecorrido(f: FilaRecorrido): Recorrido {
-  return { id: f.id, nombre: f.nombre, dia: f.dia as Recorrido['dia'], camioneta: f.camioneta, lejano: f.lejano }
+  const r: Recorrido = { id: f.id, nombre: f.nombre, dia: f.dia as Recorrido['dia'], camioneta: f.camioneta, lejano: f.lejano }
+  if (f.chofer) r.chofer = f.chofer
+  return r
+}
+export function filaAAsignacion(f: FilaAsignacion): Asignacion {
+  return { clienteId: f.cliente_id, recorridoId: f.recorrido_id, fija: f.fija, orden: Number(f.orden) }
 }
 export function filaAProducto(f: FilaProducto): Producto {
   return { id: f.id, codigo: f.codigo, nombre: f.nombre, area: f.area as Area }
@@ -172,7 +188,6 @@ export function filaAEtapa(f: FilaEtapa): Etapa {
 export function errorDeCliente(e: { code?: string; message: string }): Error {
   if (e.code === '23505') return new ErrorCliente(RUT_DUPLICADO)
   if (e.code === '42501') return new ErrorCliente('No tienes permiso para crear clientes.')
-  if (e.code === '23503') return new ErrorCliente('El recorrido no existe.')
   if (e.code === '22P02') return new ErrorCliente('Revisa los datos: hay un valor que no es válido.')
   return new Error('No se pudo guardar el cliente. Revisa tu conexión e inténtalo de nuevo.')
 }
@@ -182,6 +197,16 @@ export function errorDeMaestros(e: { code?: string; message: string }): Error {
   if (e.code === '42501') return new Error('No tienes permiso para modificar los maestros.')
   if (e.code === '23505') return new Error('Ya existe un registro con ese RUT o código. Vuelve a cargar la lista e inténtalo de nuevo.')
   if (e.code === '23514') return new Error('Hay un dato inválido (por ejemplo un código vacío).')
+  return new Error('No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.')
+}
+
+const SIN_PERMISO_ASIGNAR = 'No tienes permiso para cambiar los recorridos de los clientes.'
+
+/** Traduce un error de escritura en cliente_recorridos a un mensaje en español. */
+export function errorDeAsignaciones(e: { code?: string; message: string }): Error {
+  if (e.code === '42501') return new Error(SIN_PERMISO_ASIGNAR)
+  if (e.code === '23503') return new Error('El cliente o el recorrido ya no existe. Vuelve a cargar la página e inténtalo de nuevo.')
+  if (e.code === '23514' || e.code === '22003') return new Error('El orden debe ser un número entero de 0 o más.')
   return new Error('No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.')
 }
 
@@ -280,6 +305,12 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
     return { id, nombre: data.nombre as string, rol: data.rol as Rol }
   }
 
+  // cliente_recorridos no tiene id: orden estable por la clave primaria (cliente_id, recorrido_id).
+  const leerAsignaciones = () =>
+    leerTodas<FilaAsignacion>((d, h) =>
+      sb.from('cliente_recorridos').select(COLUMNAS_ASIGNACION).order('cliente_id').order('recorrido_id').range(d, h),
+    )
+
   const repo: Repo = {
     async usuarioActual() {
       const { data } = await sb.auth.getUser()
@@ -331,17 +362,16 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
     async cargarTodo() {
       try {
         // Cada tabla grande se lee por páginas (PostgREST corta en 1000 filas), en paralelo.
-        const [trabajos, lineas, movimientos, etapas, clientes, recorridos] = await Promise.all([
+        const [trabajos, lineas, movimientos, etapas, clientes, recorridos, asignaciones] = await Promise.all([
           leerTodas<FilaTrabajo>((d, h) => sb.from('trabajos').select(COLUMNAS_TRABAJO).order('id').range(d, h)),
           leerTodas<FilaLinea>((d, h) => sb.from('lineas').select('id, trabajo_id, producto, cantidad, nota').order('id').range(d, h)),
           leerTodas<FilaMovimiento>((d, h) =>
             sb.from('movimientos').select('id, linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id, creado_en').order('id').range(d, h),
           ),
           leerTodas<FilaEtapa>((d, h) => sb.from('etapas').select('id, area, orden, nombre, es_listo, es_final').order('id').range(d, h)),
-          leerTodas<FilaCliente>((d, h) =>
-            sb.from('clientes').select('id, nombre, rut, contacto, direccion, recorrido_id').order('id').range(d, h),
-          ),
-          leerTodas<FilaRecorrido>((d, h) => sb.from('recorridos').select('id, nombre, dia, camioneta, lejano').order('id').range(d, h)),
+          leerTodas<FilaCliente>((d, h) => sb.from('clientes').select(COLUMNAS_CLIENTE).order('id').range(d, h)),
+          leerTodas<FilaRecorrido>((d, h) => sb.from('recorridos').select(COLUMNAS_RECORRIDO).order('id').range(d, h)),
+          leerAsignaciones(),
         ])
         return {
           trabajos: trabajos.map(filaATrabajo),
@@ -350,6 +380,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
           etapas: etapas.map(filaAEtapa),
           clientes: clientes.map(filaACliente),
           recorridos: recorridos.map(filaARecorrido),
+          asignaciones: asignaciones.map(filaAAsignacion),
         }
       } catch {
         throw new Error('No se pudo cargar la información. Revisa tu conexión.')
@@ -428,9 +459,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
     },
     async listarClientes() {
       try {
-        const filas = await leerTodas<FilaCliente>((d, h) =>
-          sb.from('clientes').select('id, nombre, rut, contacto, direccion, recorrido_id').order('id').range(d, h),
-        )
+        const filas = await leerTodas<FilaCliente>((d, h) => sb.from('clientes').select(COLUMNAS_CLIENTE).order('id').range(d, h))
         return filas.map(filaACliente).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
       } catch {
         throw new Error('No se pudieron cargar los clientes. Revisa tu conexión.')
@@ -446,9 +475,8 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
           rut: cliente.rut,
           contacto: cliente.contacto ?? null,
           direccion: cliente.direccion ?? null,
-          recorrido_id: cliente.recorridoId,
         })
-        .select('id, nombre, rut, contacto, direccion, recorrido_id')
+        .select(COLUMNAS_CLIENTE)
         .single()
       if (error) throw errorDeCliente(error)
       return filaACliente(data as FilaCliente)
@@ -481,22 +509,49 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
       return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length, sinCambios: plan.sinCambios }
     },
     async listarRecorridos() {
-      const { data, error } = await sb.from('recorridos').select('id, nombre, dia, camioneta, lejano').order('dia').order('nombre')
+      const { data, error } = await sb.from('recorridos').select(COLUMNAS_RECORRIDO).order('dia').order('nombre')
       if (error) throw new Error('No se pudieron cargar los recorridos. Revisa tu conexión.')
       return (data as FilaRecorrido[]).map(filaARecorrido)
     },
     async guardarRecorrido(r) {
-      const fila = { nombre: r.nombre, dia: r.dia, camioneta: r.camioneta, lejano: r.lejano }
+      const fila = { nombre: r.nombre, dia: r.dia, camioneta: r.camioneta, lejano: r.lejano, chofer: r.chofer?.trim() || null }
       const q = r.id ? sb.from('recorridos').update(fila).eq('id', r.id) : sb.from('recorridos').insert(fila)
-      const { data, error } = await q.select('id, nombre, dia, camioneta, lejano').single()
+      const { data, error } = await q.select(COLUMNAS_RECORRIDO).single()
       lanzarSiError(error)
       return filaARecorrido(data as FilaRecorrido)
     },
-    async asignarRecorrido(clienteId, recorridoId) {
-      const { data, error } = await sb.from('clientes').update({ recorrido_id: recorridoId }).eq('id', clienteId).select('id')
-      lanzarSiError(error)
-      // RLS filtra en silencio las filas que no puede tocar: sin filas actualizadas no hubo cambio.
-      if (!data || data.length === 0) throw new Error('No se pudo asignar el recorrido (el cliente no existe o no tienes permiso).')
+    async listarAsignaciones() {
+      try {
+        return (await leerAsignaciones()).map(filaAAsignacion)
+      } catch {
+        throw new Error('No se pudieron cargar los recorridos de los clientes. Revisa tu conexión.')
+      }
+    },
+    async guardarAsignaciones(entrantes) {
+      for (const a of entrantes) {
+        const error = validarAsignacion(a)
+        if (error) throw new Error(error)
+      }
+      const plan = planificarAsignaciones(await repo.listarAsignaciones(), entrantes)
+      const filas = [...plan.nuevas, ...plan.actualizaciones].map((a) => ({
+        cliente_id: a.clienteId, recorrido_id: a.recorridoId, fija: a.fija, orden: a.orden,
+      }))
+      for (let i = 0; i < filas.length; i += LOTE) {
+        const { error } = await sb.from('cliente_recorridos').upsert(filas.slice(i, i + LOTE), { onConflict: 'cliente_id,recorrido_id' })
+        if (error) throw errorDeAsignaciones(error)
+      }
+      return { creados: plan.nuevas.length, actualizados: plan.actualizaciones.length, sinCambios: plan.sinCambios }
+    },
+    async quitarAsignacion(clienteId, recorridoId) {
+      const { data, error } = await sb
+        .from('cliente_recorridos')
+        .delete()
+        .eq('cliente_id', clienteId)
+        .eq('recorrido_id', recorridoId)
+        .select('cliente_id')
+      if (error) throw errorDeAsignaciones(error)
+      // RLS filtra en silencio las filas que no puede borrar: sin filas borradas no hubo cambio.
+      if (!data || data.length === 0) throw new Error('No se pudo quitar el recorrido (ya no estaba asignado o no tienes permiso).')
     },
     async listarProductos() {
       try {

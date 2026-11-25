@@ -74,6 +74,23 @@ export function agruparParadas(paradas: Parada[], recorridos: Recorrido[]): Grup
   return [...m.values()]
 }
 
+/**
+ * "Fijo" o "A pedido" junto al nombre del cliente en una parada de recorrido (las visitas extra ya
+ * dicen "Visita extra"). A pedido = no se pasa siempre: hoy sale porque tiene algo o lo pidió.
+ */
+export function InsigniaParada({ parada }: { parada: Parada }) {
+  if (parada.recorridoId === null) return null
+  return (
+    <span
+      className={`ml-1 inline-block rounded px-2 py-0.5 align-middle text-sm font-semibold ${
+        parada.fija ? 'bg-slate-200 text-slate-800' : 'bg-amber-100 text-amber-900'
+      }`}
+    >
+      {parada.fija ? 'Fijo' : 'A pedido'}
+    </span>
+  )
+}
+
 export const ESTADO_VISITA = { si: 'Confirmada', no: 'No confirmada', sin_respuesta: 'Sin respuesta' } as const
 
 const OPCIONES_VISITA: { id: Confirmacion; titulo: string }[] = [

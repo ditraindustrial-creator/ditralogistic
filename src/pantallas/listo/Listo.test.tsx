@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Listo from './Listo'
 import { crearMemoryRepo, type RepoMemoria } from '../../data/memoryRepo'
 import type { Repo } from '../../data/repo'
-import type { Etapa, Linea, Movimiento, Trabajo } from '../../dominio/tipos'
+import type { Asignacion, Etapa, Linea, Movimiento, Trabajo } from '../../dominio/tipos'
 
 const etapas: Etapa[] = [
   { id: 'a1', area: 'afilado', orden: 1, nombre: 'Recibido', esListo: false, esFinal: false },
@@ -20,19 +20,22 @@ const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d:
   id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn,
 })
 
-function montar(extra?: (r: RepoMemoria) => RepoMemoria) {
+const fija = (clienteId: string, recorridoId: string, f = true): Asignacion => ({ clienteId, recorridoId, fija: f, orden: 0 })
+
+function montar(extra?: (r: RepoMemoria) => RepoMemoria, asignaciones: Asignacion[] = [fija('c1', 'r1'), fija('c1', 'r2', false), fija('c2', 'r2')]) {
   const base = crearMemoryRepo({
     usuario: { id: 'u', nombre: 'Ana', rol: 'admin' },
     etapas,
     clientes: [
-      { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: 'r1' },
-      { id: 'c2', nombre: 'Libros del Norte', rut: '2-7', recorridoId: 'r2' },
-      { id: 'c3', nombre: 'Taller Sin Ruta', rut: '3-5', recorridoId: null },
+      { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' },
+      { id: 'c2', nombre: 'Libros del Norte', rut: '2-7' },
+      { id: 'c3', nombre: 'Taller Sin Ruta', rut: '3-5' },
     ],
     recorridos: [
       { id: 'r1', nombre: 'Costa', dia: 2, camioneta: 'C1', lejano: false },
       { id: 'r2', nombre: 'Cordillera', dia: 4, camioneta: 'C2', lejano: true },
     ],
+    asignaciones,
     trabajos: [trab('t1', 11, 'c1', 'afilado'), trab('t2', 12, 'c2', 'encuadernacion'), trab('t3', 13, 'c3', 'afilado')],
     lineas: [lin('l1', 't1', 6), lin('l2', 't2', 3), lin('l3', 't3', 2)],
     movimientos: [
@@ -56,14 +59,28 @@ const tarjeta = async (nombre: string) => {
 }
 const hay = (nombre: string) => tarjetas().some((li) => within(li).queryByText(nombre))
 
+// "Hoy" fijo: martes 24/11/2026 a las 12:00 en Chile (solo se finge la fecha; los timers son reales).
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-11-24T15:00:00Z'))
+})
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+const titulos = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+
 describe('Listo', () => {
-  it('muestra "4 de 6 listas" con la hora de Chile, el recorrido y el día; y agrupa los sin recorrido', async () => {
+  it('muestra "4 de 6 listas" con la hora de Chile, agrupa por la próxima ruta y deja aparte los sin recorrido', async () => {
     montar()
     const fila = await tarjeta('Imprenta Sur')
     expect(within(fila).getByText('4 de 6 listas')).toBeInTheDocument()
-    expect(within(fila).getByText(/Listo desde .*10:30/)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Costa · Martes' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Cordillera · Jueves' })).toBeInTheDocument()
+    expect(within(fila).getByText(/Listo desde hoy 10:30/)).toBeInTheDocument()
+    // Imprenta Sur está en Costa (martes) y, a pedido, en Cordillera (jueves): hoy es martes, su próxima ruta es hoy.
+    expect(within(fila).getByText('Rutas: Mar · Jue')).toBeInTheDocument()
+    expect(titulos()).toEqual(['Costa · Mar 24/11 (hoy)', 'Cordillera · Jue 26/11', 'Sin recorrido'])
+    expect(within(screen.getByRole('heading', { name: 'Costa · Mar 24/11 (hoy)' }).closest('section')!).getByText('Imprenta Sur')).toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Cordillera · Jue 26/11' }).closest('section')!).getByText('Libros del Norte')).toBeInTheDocument()
     const sin = screen.getByRole('heading', { name: 'Sin recorrido' })
     expect(within(sin.closest('section')!).getByText('Taller Sin Ruta')).toBeInTheDocument()
     const nada = await tarjeta('Libros del Norte')
@@ -87,24 +104,59 @@ describe('Listo', () => {
     expect(hay('Imprenta Sur')).toBe(false)
   })
 
-  it('filtra por recorrido, incluido "Sin recorrido"', async () => {
+  it('filtra por recorrido (cualquiera de los del cliente), incluido "Sin recorrido"', async () => {
     montar()
     await tarjeta('Imprenta Sur')
     await userEvent.selectOptions(screen.getByLabelText('Recorrido'), 'Cordillera')
     expect(hay('Libros del Norte')).toBe(true)
-    expect(hay('Imprenta Sur')).toBe(false)
+    expect(hay('Imprenta Sur')).toBe(true) // también va en Cordillera (a pedido)
+    expect(hay('Taller Sin Ruta')).toBe(false)
+    await userEvent.selectOptions(screen.getByLabelText('Recorrido'), 'Costa')
+    expect(hay('Libros del Norte')).toBe(false)
+    expect(hay('Imprenta Sur')).toBe(true)
     await userEvent.selectOptions(screen.getByLabelText('Recorrido'), '__sin_recorrido__')
     expect(hay('Taller Sin Ruta')).toBe(true)
     expect(hay('Libros del Norte')).toBe(false)
   })
 
-  it('filtra por día', async () => {
+  it('filtra por día: cualquiera de los días de ruta del cliente', async () => {
     montar()
     await tarjeta('Imprenta Sur')
     await userEvent.selectOptions(screen.getByLabelText('Día'), '2')
     expect(hay('Imprenta Sur')).toBe(true)
     expect(hay('Libros del Norte')).toBe(false)
     expect(hay('Taller Sin Ruta')).toBe(false)
+    await userEvent.selectOptions(screen.getByLabelText('Día'), '4')
+    expect(hay('Imprenta Sur')).toBe(true)
+    expect(hay('Libros del Norte')).toBe(true)
+    await userEvent.selectOptions(screen.getByLabelText('Día'), '1')
+    expect(tarjetas()).toEqual([])
+  })
+
+  it('un cliente de lunes, miércoles y viernes: "Rutas: Lun · Mié · Vie" y el grupo es su próxima ruta (hoy martes -> miércoles)', async () => {
+    const repo = crearMemoryRepo({
+      usuario: { id: 'u', nombre: 'Ana', rol: 'admin' }, etapas,
+      clientes: [{ id: 'c1', nombre: 'Tres Días SpA', rut: '1-9' }],
+      recorridos: [
+        { id: 'l', nombre: 'Lunes · Rodrigo Lagos', dia: 1, camioneta: 'C1', lejano: false },
+        { id: 'm', nombre: 'Miércoles · Angelo', dia: 3, camioneta: 'C2', lejano: false },
+        { id: 'v', nombre: 'Viernes · Rodrigo Lagos', dia: 5, camioneta: 'C1', lejano: false },
+      ],
+      asignaciones: [fija('c1', 'v'), fija('c1', 'l'), fija('c1', 'm')],
+      trabajos: [trab('t1', 1, 'c1', 'afilado')], lineas: [lin('l1', 't1', 2)],
+      movimientos: [mov('m1', 'l1', 2, null, 'a1', '2026-11-20T12:00:00Z'), mov('m2', 'l1', 2, 'a1', 'a2', '2026-11-23T12:00:00Z')],
+    })
+    render(<Listo repo={repo} />)
+    const fila = await tarjeta('Tres Días SpA')
+    expect(within(fila).getByText('Rutas: Lun · Mié · Vie')).toBeInTheDocument()
+    expect(titulos()).toEqual(['Miércoles · Angelo · Mié 25/11'])
+  })
+
+  it('el sábado lo listo de un cliente de lunes queda en el grupo del lunes siguiente', async () => {
+    vi.setSystemTime(new Date('2026-11-28T15:00:00Z'))
+    montar(undefined, [fija('c1', 'r1'), fija('c2', 'r2')])
+    await tarjeta('Imprenta Sur')
+    expect(titulos()).toEqual(['Costa · Mar 1/12', 'Cordillera · Jue 3/12', 'Sin recorrido'])
   })
 
   it('"Solo con unidades listas" oculta los trabajos sin nada listo', async () => {
@@ -126,7 +178,7 @@ describe('Listo', () => {
   it('entrega parcial: 2 entregadas y 4 listas de 6 pedidas -> "4 de 4 listas", Todo listo y "2 entregadas"', async () => {
     const repo = crearMemoryRepo({
       usuario: { id: 'u', nombre: 'Ana', rol: 'admin' }, etapas: [...etapas, { id: 'a3', area: 'afilado', orden: 3, nombre: 'Entregado', esListo: false, esFinal: true }],
-      clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null }],
+      clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }],
       trabajos: [trab('t1', 1, 'c1', 'afilado')], lineas: [lin('l1', 't1', 6)],
       movimientos: [mov('m1', 'l1', 6, null, 'a1', '2026-11-20T12:00:00Z'), mov('m2', 'l1', 6, 'a1', 'a2', '2026-11-21T12:00:00Z'), mov('m3', 'l1', 2, 'a2', 'a3', '2026-11-22T12:00:00Z')],
     })
@@ -140,7 +192,7 @@ describe('Listo', () => {
   it('entrega parcial: 4 entregadas y 2 en taller -> "0 de 2 listas" y aún no hay listas', async () => {
     const repo = crearMemoryRepo({
       usuario: { id: 'u', nombre: 'Ana', rol: 'admin' }, etapas: [...etapas, { id: 'a3', area: 'afilado', orden: 3, nombre: 'Entregado', esListo: false, esFinal: true }],
-      clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null }],
+      clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }],
       trabajos: [trab('t1', 1, 'c1', 'afilado')], lineas: [lin('l1', 't1', 6)],
       movimientos: [mov('m1', 'l1', 6, null, 'a1', '2026-11-20T12:00:00Z'), mov('m2', 'l1', 4, 'a1', 'a3', '2026-11-22T12:00:00Z')],
     })

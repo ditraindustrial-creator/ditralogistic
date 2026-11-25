@@ -1,4 +1,4 @@
-import type { Cliente, Modalidad, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
+import type { Asignacion, Cliente, Modalidad, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
 import type { Entrega, OpcionesEntrega } from '../dominio/entrega'
 import type { DatosTrabajoNuevo } from '../dominio/trabajo'
 import type { DatosOperacion } from '../dominio/listo'
@@ -39,18 +39,25 @@ export interface Repo {
    * y lanza ErrorCliente en español (también si el RUT ya existe).
    */
   crearCliente(datos: ClienteNuevo): Promise<Cliente>
-  /** Crea o actualiza por RUT (idempotente). No cambia el recorrido de los que ya existen. */
+  /** Crea o actualiza por RUT (idempotente). No cambia los recorridos asignados. */
   guardarClientes(clientes: ClienteImportado[]): Promise<ResultadoGuardado>
   listarRecorridos(): Promise<Recorrido[]>
   /** Crea el recorrido, o lo edita si trae `id`. */
   guardarRecorrido(recorrido: Omit<Recorrido, 'id'> & { id?: string }): Promise<Recorrido>
-  /** Asigna (o quita, con null) el recorrido fijo de un cliente. */
-  asignarRecorrido(clienteId: string, recorridoId: string | null): Promise<void>
+  /** Todas las asignaciones cliente-recorrido (un cliente puede estar en varios recorridos). */
+  listarAsignaciones(): Promise<Asignacion[]>
+  /**
+   * Crea o actualiza asignaciones por el par (cliente, recorrido), en lotes; las que ya están iguales
+   * no se escriben. Solo gestión. Lanza Error en español (sin permiso, cliente o recorrido inexistente, orden inválido).
+   */
+  guardarAsignaciones(asignaciones: Asignacion[]): Promise<ResultadoGuardado>
+  /** Quita al cliente de un recorrido. Solo gestión. Lanza Error en español si no se pudo. */
+  quitarAsignacion(clienteId: string, recorridoId: string): Promise<void>
   listarProductos(): Promise<Producto[]>
   /** Crea o actualiza por código (idempotente). */
   guardarProductos(productos: ProductoImportado[]): Promise<ResultadoGuardado>
 
-  /** Todo lo que necesita `resumenListo`: trabajos, líneas, movimientos, etapas, clientes y recorridos. */
+  /** Todo lo que necesita `resumenListo`: trabajos, líneas, movimientos, etapas, clientes, recorridos y asignaciones. */
   cargarTodo(): Promise<DatosOperacion>
   /**
    * Avisa (sin datos) cada vez que cambian los movimientos, para que la pantalla recargue.

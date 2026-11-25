@@ -20,7 +20,7 @@ const mov = (lineaId: string, cantidad: number, o: string | null, d: string, cre
   id: `m${++n}`, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn,
 })
 const datos = (p: Partial<DatosOperacion>): DatosOperacion => ({
-  trabajos: [], lineas: [], movimientos: [], etapas, clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null }], recorridos: [], ...p,
+  trabajos: [], lineas: [], movimientos: [], etapas, clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }], recorridos: [], asignaciones: [], ...p,
 })
 const HOY = '2026-11-24'
 

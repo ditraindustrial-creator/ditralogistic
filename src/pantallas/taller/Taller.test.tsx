@@ -29,8 +29,8 @@ function montar(rol: Rol = 'jefe_taller', envolver?: (r: Repo) => Repo) {
     usuario,
     etapas,
     clientes: [
-      { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null },
-      { id: 'c2', nombre: 'Libros del Norte', rut: '2-7', recorridoId: null },
+      { id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' },
+      { id: 'c2', nombre: 'Libros del Norte', rut: '2-7' },
     ],
     trabajos: [trab('t1', 11, 'c1', 'afilado'), trab('t2', 12, 'c2', 'encuadernacion'), trab('t3', 13, 'c2', 'afilado', true, '2026-11-22T12:00:00Z'), trab('t4', 14, 'c1', 'afilado', false, '2026-11-23T12:00:00Z'), trab('t5', 15, 'c2', 'afilado', false, '2026-11-24T12:00:00Z')],
     lineas: [
@@ -230,7 +230,7 @@ describe('Taller', () => {
     function montarConEntregadas(rol: Rol, espia = vi.fn()) {
       const usuario = { id: 'u', nombre: 'Ana', rol }
       const base = crearMemoryRepo({
-        usuario, etapas, clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null }],
+        usuario, etapas, clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }],
         trabajos: [trab('t6', 16, 'c1', 'afilado')],
         lineas: [{ id: 'l6', trabajoId: 't6', producto: 'Disco', cantidad: 4 }],
         movimientos: [mov('m1', 'l6', 4, null, 'a1'), mov('m2', 'l6', 4, 'a1', 'a4'), mov('m3', 'l6', 2, 'a4', 'a5')],

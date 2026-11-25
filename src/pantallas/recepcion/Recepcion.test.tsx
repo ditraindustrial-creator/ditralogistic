@@ -21,8 +21,8 @@ function montar(usuario: UsuarioActual = secretaria, envolver?: (r: Repo) => Rep
   const base = crearMemoryRepo({
     usuario, etapas, trabajos, lineas,
     clientes: [
-      { id: 'c1', nombre: 'Imprenta Sur Ltda.', rut: '76123456-7', recorridoId: null },
-      { id: 'c2', nombre: 'Ñandú SpA', rut: '12345678-5', recorridoId: null },
+      { id: 'c1', nombre: 'Imprenta Sur Ltda.', rut: '76123456-7' },
+      { id: 'c2', nombre: 'Ñandú SpA', rut: '12345678-5' },
     ],
     productos: [
       { id: 'p1', codigo: 'CU-20', nombre: 'Cuchillo 20 cm', area: 'afilado' },
@@ -187,7 +187,7 @@ describe('Recepcion', () => {
   })
 
   describe('dentro de la hoja del chofer (clienteInicial y onCreado)', () => {
-    const cliente = { id: 'c1', nombre: 'Imprenta Sur Ltda.', rut: '76123456-7', recorridoId: null }
+    const cliente = { id: 'c1', nombre: 'Imprenta Sur Ltda.', rut: '76123456-7' }
 
     it('arranca con el cliente elegido y la modalidad ruta propia, también para gestión', async () => {
       montar(secretaria, undefined, { clienteInicial: cliente })
@@ -284,7 +284,8 @@ describe('Recepcion: cliente nuevo', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
     await screen.findByText('Trabajo N.º 1 guardado')
     const nuevo = (await repo.listarClientes()).find((c) => c.rut === '9876543-3')!
-    expect(nuevo).toMatchObject({ nombre: 'Ferretería Norte', direccion: 'Av. Siempre 1', recorridoId: null })
+    expect(nuevo).toMatchObject({ nombre: 'Ferretería Norte', direccion: 'Av. Siempre 1' })
+    expect(await repo.listarAsignaciones()).toEqual([]) // sin recorrido: se asigna en Administración
     expect(trabajos[0].clienteId).toBe(nuevo.id)
   })
 
@@ -320,7 +321,7 @@ describe('Recepcion: cliente nuevo', () => {
     expect(alerta).not.toHaveTextContent('duplicate')
   })
 
-  it('el chofer también crea clientes, con recorrido opcional; Cancelar vuelve al buscador', async () => {
+  it('el chofer también crea clientes (los recorridos se asignan en Administración); Cancelar vuelve al buscador', async () => {
     const usuario = chofer
     const base = crearMemoryRepo({
       usuario, etapas, clientes: [],
@@ -334,10 +335,11 @@ describe('Recepcion: cliente nuevo', () => {
     const form = screen.getByRole('form', { name: 'Cliente nuevo' })
     await userEvent.type(within(form).getByLabelText('Nombre'), 'Taller Sur')
     await userEvent.type(within(form).getByLabelText('RUT'), '5-1')
-    await userEvent.selectOptions(await within(form).findByLabelText('Recorrido (opcional)'), await within(form).findByRole('option', { name: 'Norte (martes)' }))
+    expect(within(form).queryByLabelText(/Recorrido/)).not.toBeInTheDocument()
+    expect(within(form).getByText('Los recorridos del cliente (qué días se le visita) se asignan en Administración.')).toBeInTheDocument()
     await userEvent.click(within(form).getByRole('button', { name: 'Guardar cliente' }))
     expect(await screen.findByText('Taller Sur')).toBeInTheDocument()
-    expect((await base.listarClientes())[0]).toMatchObject({ rut: '5-1', recorridoId: 'r1' })
+    expect((await base.listarClientes())[0]).toMatchObject({ rut: '5-1' })
   })
 
   it('sin clientes cargados lo dice y ofrece crear uno', async () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { parsearCsv, normalizarRut, importarClientes, importarProductos, decodificarArchivo } from './csv'
+import { parsearCsv, normalizarRut, importarClientes, importarProductos, importarAsignaciones, decodificarArchivo } from './csv'
+import type { Cliente, Recorrido } from './tipos'
 
 const BOM = '﻿'
 
@@ -196,5 +197,137 @@ describe('importarProductos', () => {
   it('sin columna ni área por defecto, cada fila reporta que falta el área', () => {
     const r = importarProductos([{ c: '1', n: 'Tijera' }], { codigo: 'c', nombre: 'n' })
     expect(r.errores).toEqual([{ fila: 2, motivo: 'Falta el área.' }])
+  })
+})
+
+describe('importarAsignaciones', () => {
+  const recorridos: Recorrido[] = [
+    { id: 'lunR', nombre: 'Lunes · Rodrigo Lagos', dia: 1, camioneta: 'C1', lejano: false, chofer: 'Rodrigo Lagos' },
+    { id: 'mieA', nombre: 'Miércoles · Angelo', dia: 3, camioneta: 'C2', lejano: false },
+    { id: 'vieA', nombre: 'Viernes  Angelo', dia: 5, camioneta: 'C2', lejano: false },
+  ]
+  const clientes: Cliente[] = [
+    { id: 'c1', nombre: 'Uno', rut: '11.111.111-1' },
+    { id: 'c2', nombre: 'Dos', rut: '22222222-2' },
+    { id: 'c3', nombre: 'Tres', rut: '7654321-K' },
+  ]
+  const mapeo = { recorrido: 'recorrido', rut: 'rut', fija: 'fija', orden: 'orden' }
+  const importar = (filas: Record<string, string>[], m: Parameters<typeof importarAsignaciones>[1] = mapeo) =>
+    importarAsignaciones(filas, m, recorridos, clientes)
+
+  it('reconoce el recorrido sin importar mayúsculas, tildes ni espacios, y el cliente por RUT con o sin puntos', () => {
+    const r = importar([
+      { recorrido: 'LUNES · RODRIGO LAGOS', rut: '11111111-1', fija: 'sí', orden: '2' },
+      { recorrido: 'miercoles · angelo', rut: '22.222.222-2', fija: 'no', orden: '0' },
+      { recorrido: ' viernes angelo ', rut: '7.654.321-k', fija: '', orden: '5' },
+    ])
+    expect(r.errores).toEqual([])
+    expect(r.asignaciones).toEqual([
+      { clienteId: 'c1', recorridoId: 'lunR', fija: true, orden: 2 },
+      { clienteId: 'c2', recorridoId: 'mieA', fija: false, orden: 0 },
+      { clienteId: 'c3', recorridoId: 'vieA', fija: true, orden: 5 },
+    ])
+  })
+
+  it('fija: sí/si/1/true/x = fija; no/0/false = a pedido; vacío = fija; otra cosa es error', () => {
+    const valores = ['Sí', 'si', '1', 'TRUE', 'x', 'No', '0', 'false', '', 'quizás']
+    // 9 pares (recorrido, cliente) distintos; la décima fila repite el primero pero falla antes por fija.
+    const recs = ['Lunes · Rodrigo Lagos', 'Miércoles · Angelo', 'Viernes Angelo']
+    const ruts = ['11111111-1', '22222222-2', '7654321-K']
+    const r = importar(valores.map((v, i) => ({ recorrido: recs[i % 3], rut: ruts[Math.floor(i / 3) % 3], fija: v, orden: String(i) })))
+    expect(r.asignaciones.map((a) => a.fija)).toEqual([true, true, true, true, true, false, false, false, true])
+    expect(r.errores).toEqual([{ fila: 11, motivo: 'El valor "quizás" de la columna fija no es válido (usa sí o no).' }])
+  })
+
+  it('sin columna de fija u orden: todo fijo, y el orden es la posición de la fila dentro de su recorrido en el archivo', () => {
+    const r = importar(
+      [
+        { recorrido: 'Lunes · Rodrigo Lagos', rut: '11111111-1' },
+        { recorrido: 'Miércoles · Angelo', rut: '11111111-1' },
+        { recorrido: 'Lunes · Rodrigo Lagos', rut: '22222222-2' },
+        { recorrido: 'Lunes · Rodrigo Lagos', rut: '7654321-K' },
+      ],
+      { recorrido: 'recorrido', rut: 'rut' },
+    )
+    expect(r.asignaciones).toEqual([
+      { clienteId: 'c1', recorridoId: 'lunR', fija: true, orden: 1 },
+      { clienteId: 'c1', recorridoId: 'mieA', fija: true, orden: 1 },
+      { clienteId: 'c2', recorridoId: 'lunR', fija: true, orden: 2 },
+      { clienteId: 'c3', recorridoId: 'lunR', fija: true, orden: 3 },
+    ])
+  })
+
+  it('orden vacío en algunas filas: usa la posición de la fila en su recorrido (contando también las que traen orden)', () => {
+    const r = importar([
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: '11111111-1', fija: '', orden: '10' },
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: '22222222-2', fija: '', orden: '' },
+    ])
+    expect(r.asignaciones.map((a) => a.orden)).toEqual([10, 2])
+  })
+
+  it('reporta con número de fila: recorrido o cliente desconocido, RUT inválido, faltantes y orden no numérico; las buenas se importan', () => {
+    const r = importar([
+      { recorrido: 'Martes · Nadie', rut: '11111111-1', fija: '', orden: '' },
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: '33.333.333-3', fija: '', orden: '' },
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: 'abc', fija: '', orden: '' },
+      { recorrido: '', rut: '11111111-1', fija: '', orden: '' },
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: '', fija: '', orden: '' },
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: '11111111-1', fija: '', orden: 'primero' },
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: '11111111-1', fija: '', orden: '-1' },
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: '11111111-1', fija: '', orden: '2.5' },
+      { recorrido: '', rut: '', fija: '', orden: '' },
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: '11111111-1', fija: 'si', orden: '3' },
+    ])
+    expect(r.errores).toEqual([
+      { fila: 2, motivo: 'El recorrido "Martes · Nadie" no existe. Créalo en la pestaña Recorridos o revisa cómo está escrito.' },
+      { fila: 3, motivo: 'No hay ningún cliente con RUT 33333333-3. Impórtalo primero en la lista de clientes.' },
+      { fila: 4, motivo: 'El RUT "abc" no es válido.' },
+      { fila: 5, motivo: 'Falta el recorrido.' },
+      { fila: 6, motivo: 'Falta el RUT.' },
+      { fila: 7, motivo: 'El orden "primero" no es válido (usa un número entero: 0, 1, 2…).' },
+      { fila: 8, motivo: 'El orden "-1" no es válido (usa un número entero: 0, 1, 2…).' },
+      { fila: 9, motivo: 'El orden "2.5" no es válido (usa un número entero: 0, 1, 2…).' },
+    ])
+    expect(r.asignaciones).toEqual([{ clienteId: 'c1', recorridoId: 'lunR', fija: true, orden: 3 }])
+  })
+
+  it('el mismo cliente dos veces en el mismo recorrido: la segunda fila es error y se conserva la primera', () => {
+    const r = importar([
+      { recorrido: 'Lunes · Rodrigo Lagos', rut: '11111111-1', fija: 'si', orden: '1' },
+      { recorrido: 'Miércoles · Angelo', rut: '11111111-1', fija: 'si', orden: '1' },
+      { recorrido: 'lunes · rodrigo lagos', rut: '11.111.111-1', fija: 'no', orden: '9' },
+    ])
+    expect(r.asignaciones).toEqual([
+      { clienteId: 'c1', recorridoId: 'lunR', fija: true, orden: 1 },
+      { clienteId: 'c1', recorridoId: 'mieA', fija: true, orden: 1 },
+    ])
+    expect(r.errores).toEqual([{ fila: 4, motivo: 'Cliente repetido en este recorrido: ya aparece en la fila 2.' }])
+  })
+
+  it('dos recorridos con el mismo nombre (sin contar tildes): la fila es error, no se adivina', () => {
+    const r = importarAsignaciones(
+      [{ recorrido: 'Norte', rut: '11111111-1' }],
+      { recorrido: 'recorrido', rut: 'rut' },
+      [{ id: 'a', nombre: 'Norte', dia: 1, camioneta: 'C1', lejano: false }, { id: 'b', nombre: 'NORTE', dia: 2, camioneta: 'C1', lejano: false }],
+      clientes,
+    )
+    expect(r.asignaciones).toEqual([])
+    expect(r.errores).toEqual([{ fila: 2, motivo: 'Hay más de un recorrido llamado "Norte". Cambia el nombre de uno de ellos en la pestaña Recorridos.' }])
+  })
+
+  it('lee un archivo de Excel con BOM y separador ; (como la plantilla)', () => {
+    const texto = BOM + 'recorrido;rut;fija;orden\r\nLunes · Rodrigo Lagos;11.111.111-1;sí;1\r\nMiércoles · Angelo;22.222.222-2;no;\r\n'
+    const bytes = new TextEncoder().encode(texto)
+    const r = importar(parsearCsv(decodificarArchivo(bytes.buffer as ArrayBuffer)))
+    expect(r.errores).toEqual([])
+    expect(r.asignaciones).toEqual([
+      { clienteId: 'c1', recorridoId: 'lunR', fija: true, orden: 1 },
+      { clienteId: 'c2', recorridoId: 'mieA', fija: false, orden: 1 },
+    ])
+  })
+
+  it('una columna elegida que no existe se informa una sola vez', () => {
+    const r = importar([{ recorrido: 'x', rut: '1-9' }], { recorrido: 'Ruta', rut: 'rut' })
+    expect(r).toEqual({ asignaciones: [], errores: [{ fila: 0, motivo: 'La columna "Ruta" no existe en el archivo.' }] })
   })
 })

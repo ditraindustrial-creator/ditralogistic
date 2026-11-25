@@ -4,8 +4,12 @@ import { diaLocal } from '../../dominio/fechas'
 import { resumenListo, type FilaListo } from '../../dominio/listo'
 import type { Area } from '../../dominio/tipos'
 import { useDatosEnVivo } from '../useDatosEnVivo'
+import { useFechaPorDefecto } from '../useFechaPorDefecto'
+
+const elMismoDia = (hoy: string) => hoy
 
 const DIAS: Record<number, string> = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes' }
+const DIAS_CORTOS: Record<number, string> = { 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie' }
 const AREAS: Record<Area, string> = { afilado: 'Afilado', encuadernacion: 'Encuadernación' }
 const SIN_RECORRIDO = '__sin_recorrido__'
 
@@ -28,18 +32,33 @@ function desdeCuando(iso: string): string {
 interface Grupo {
   clave: string
   titulo: string
-  dia: number
+  /** Fecha de la próxima ruta ('YYYY-MM-DD'); "~" deja "Sin recorrido" al final. */
+  fecha: string
   filas: FilaListo[]
 }
 
-function agrupar(filas: FilaListo[]): Grupo[] {
+/** "Mié 26/11", y "(hoy)" si es hoy. */
+function etiquetaFecha(fecha: string, dia: number, hoy: string): string {
+  const [, m, d] = fecha.split('-').map(Number)
+  return `${DIAS_CORTOS[dia] ?? ''} ${d}/${m}${fecha === hoy ? ' (hoy)' : ''}`
+}
+
+/** "Rutas: Lun · Mié · Vie" (días distintos, de lunes a viernes). */
+function textoRutas(f: FilaListo): string {
+  return `Rutas: ${[...new Set(f.rutas.map((r) => r.dia))].map((d) => DIAS_CORTOS[d]).join(' · ')}`
+}
+
+/** Agrupa por la próxima ruta del cliente (recorrido + fecha); los que no tienen recorrido, aparte. */
+function agrupar(filas: FilaListo[], hoy: string): Grupo[] {
   const grupos = new Map<string, Grupo>()
   for (const f of filas) {
-    const clave = f.recorrido ?? SIN_RECORRIDO
+    const p = f.proximaRuta
+    const clave = p ? `${p.fecha}|${p.recorridoId}` : SIN_RECORRIDO
     let g = grupos.get(clave)
     if (!g) {
-      const titulo = f.recorrido === null ? 'Sin recorrido' : f.dia ? `${f.recorrido} · ${DIAS[f.dia] ?? ''}` : f.recorrido
-      g = { clave, titulo, dia: f.dia ?? 99, filas: [] }
+      g = p
+        ? { clave, titulo: `${p.recorridoNombre} · ${etiquetaFecha(p.fecha, p.dia, hoy)}`, fecha: p.fecha, filas: [] }
+        : { clave, titulo: 'Sin recorrido', fecha: '~', filas: [] }
       grupos.set(clave, g)
     }
     g.filas.push(f)
@@ -48,12 +67,14 @@ function agrupar(filas: FilaListo[]): Grupo[] {
   for (const g of grupos.values()) {
     g.filas.sort((a, b) => cuando(a) - cuando(b) || a.clienteNombre.localeCompare(b.clienteNombre, 'es') || a.numero - b.numero)
   }
-  return [...grupos.values()].sort((a, b) => a.dia - b.dia || a.titulo.localeCompare(b.titulo, 'es'))
+  return [...grupos.values()].sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0) || a.titulo.localeCompare(b.titulo, 'es'))
 }
 
 export default function Listo({ repo }: { repo: Repo }) {
   const { datos, error, conectado } = useDatosEnVivo(repo)
-  const filas = useMemo(() => (datos ? resumenListo(datos) : null), [datos])
+  // Hoy en Chile (se renueva al cambiar el día con la pantalla abierta): la próxima ruta se cuenta desde hoy, hoy incluido.
+  const [hoy] = useFechaPorDefecto(elMismoDia)
+  const filas = useMemo(() => (datos ? resumenListo(datos, hoy) : null), [datos, hoy])
   const [area, setArea] = useState('')
   const [cliente, setCliente] = useState('')
   const [recorrido, setRecorrido] = useState('')
@@ -65,20 +86,21 @@ export default function Listo({ repo }: { repo: Repo }) {
     for (const f of filas ?? []) m.set(f.clienteId, f.clienteNombre)
     return [...m].sort((a, b) => a[1].localeCompare(b[1], 'es'))
   }, [filas])
-  const recorridos = useMemo(
-    () => [...new Set((filas ?? []).flatMap((f) => (f.recorrido ? [f.recorrido] : [])))].sort((a, b) => a.localeCompare(b, 'es')),
-    [filas],
-  )
+  const recorridos = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const f of filas ?? []) for (const r of f.rutas) m.set(r.recorridoId, r.recorridoNombre)
+    return [...m].sort((a, b) => a[1].localeCompare(b[1], 'es'))
+  }, [filas])
 
   const visibles = (filas ?? []).filter(
     (f) =>
       (!area || f.area === area) &&
       (!cliente || f.clienteId === cliente) &&
-      (!recorrido || (recorrido === SIN_RECORRIDO ? f.recorrido === null : f.recorrido === recorrido)) &&
-      (!dia || f.dia === Number(dia)) &&
+      (!recorrido || (recorrido === SIN_RECORRIDO ? f.rutas.length === 0 : f.rutas.some((r) => r.recorridoId === recorrido))) &&
+      (!dia || f.rutas.some((r) => r.dia === Number(dia))) &&
       (!soloListas || f.listas > 0),
   )
-  const grupos = agrupar(visibles)
+  const grupos = agrupar(visibles, hoy)
 
   return (
     <div className="flex flex-col gap-4">
@@ -104,8 +126,8 @@ export default function Listo({ repo }: { repo: Repo }) {
           Recorrido
           <select className={campo} value={recorrido} onChange={(e) => setRecorrido(e.target.value)}>
             <option value="">Todos</option>
-            {recorridos.map((r) => (
-              <option key={r} value={r}>{r}</option>
+            {recorridos.map(([id, nombre]) => (
+              <option key={id} value={id}>{nombre}</option>
             ))}
             <option value={SIN_RECORRIDO}>Sin recorrido</option>
           </select>
@@ -147,6 +169,7 @@ export default function Listo({ repo }: { repo: Repo }) {
                   <p className={`text-xl font-bold ${f.listas > 0 ? 'text-teal-800' : 'text-slate-600'}`}>
                     {f.listas} de {f.pendientes} listas
                   </p>
+                  {f.rutas.length > 0 && <p className="text-sm text-slate-600">{textoRutas(f)}</p>}
                   <p className="text-slate-700">
                     {f.listoDesde ? `${completo ? 'Todo listo' : 'Listo'} desde ${desdeCuando(f.listoDesde)}` : 'Aún no hay unidades listas'}
                   </p>

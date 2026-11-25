@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { ErrorCliente, TEXTO_CLIENTE_MAXIMO, validarClienteNuevo } from '../../dominio/maestros'
-import type { Cliente, Recorrido } from '../../dominio/tipos'
+import type { Cliente } from '../../dominio/tipos'
 
 const ERROR_GENERICO = 'No se pudo guardar el cliente. Revisa tu conexión e inténtalo de nuevo.'
-const DIAS = ['', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes']
 
 const campo = 'min-h-12 w-full rounded border bg-white p-3 text-lg font-normal'
 const botonGrande = 'min-h-14 rounded bg-teal-700 px-5 py-3 text-xl font-semibold text-white disabled:opacity-50'
@@ -36,29 +35,18 @@ export default function ClienteNuevo({
   const [rut, setRut] = useState(inicial.rut)
   const [contacto, setContacto] = useState('')
   const [direccion, setDireccion] = useState('')
-  const [recorridoId, setRecorridoId] = useState('')
-  const [recorridos, setRecorridos] = useState<Recorrido[]>([])
   const [errores, setErrores] = useState<string[]>([])
   const [guardando, setGuardando] = useState(false)
   const enCurso = useRef(false)
   const primerCampo = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    let activo = true
-    // El recorrido es opcional: si la lista no carga, el cliente se crea sin recorrido.
-    repo.listarRecorridos().then(
-      (r) => activo && setRecorridos(r),
-      () => undefined,
-    )
     primerCampo.current?.focus()
-    return () => {
-      activo = false
-    }
-  }, [repo])
+  }, [])
 
   async function guardar() {
     if (enCurso.current) return
-    const datos = { nombre, rut, contacto, direccion, recorridoId: recorridoId || null }
+    const datos = { nombre, rut, contacto, direccion }
     const { errores: invalidos } = validarClienteNuevo(datos, clientes)
     if (invalidos.length > 0) {
       setErrores(invalidos)
@@ -105,15 +93,8 @@ export default function ClienteNuevo({
         Dirección (opcional)
         <input className={campo} maxLength={TEXTO_CLIENTE_MAXIMO} value={direccion} onChange={(e) => setDireccion(e.target.value)} />
       </label>
-      <label className="flex flex-col gap-1 text-lg">
-        Recorrido (opcional)
-        <select className={campo} value={recorridoId} onChange={(e) => setRecorridoId(e.target.value)}>
-          <option value="">Sin recorrido</option>
-          {recorridos.map((r) => (
-            <option key={r.id} value={r.id}>{r.nombre} ({DIAS[r.dia]})</option>
-          ))}
-        </select>
-      </label>
+      {/* Un cliente puede estar en varios recorridos; eso lo asigna gestión en Administración. */}
+      <p className="text-slate-600">Los recorridos del cliente (qué días se le visita) se asignan en Administración.</p>
       {errores.length > 0 && (
         <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-red-800">
           <ul className="list-disc pl-5">

@@ -27,7 +27,7 @@ function montar(envolver?: (r: Repo) => Repo, props: Partial<Parameters<typeof E
   const base = crearMemoryRepo({
     usuario: { id: 'u1', nombre: 'Pedro', rol: 'chofer' },
     etapas,
-    clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null }],
+    clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }],
     trabajos: [trab('t1', 11)],
     lineas: [
       { id: 'l1', trabajoId: 't1', producto: 'Cuchillo', cantidad: 4 },

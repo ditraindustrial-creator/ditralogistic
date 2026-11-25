@@ -26,7 +26,7 @@ function crear(usuario: UsuarioActual | null = secretaria) {
   const lineas: Linea[] = []
   const repo = crearMemoryRepo({
     usuario, etapas, trabajos, lineas,
-    clientes: [{ id: 'c1', nombre: 'Cliente', rut: '1-9', recorridoId: null }],
+    clientes: [{ id: 'c1', nombre: 'Cliente', rut: '1-9' }],
   })
   return { repo, trabajos, lineas }
 }
@@ -53,7 +53,7 @@ describe('memoryRepo.crearTrabajo con clave de idempotencia', () => {
   it('la clave de otro usuario es un error que no muestra ese trabajo', async () => {
     const trabajos: Trabajo[] = []
     const r = crearMemoryRepo({
-      etapas, trabajos, clientes: [{ id: 'c1', nombre: 'Cliente', rut: '1-9', recorridoId: null }],
+      etapas, trabajos, clientes: [{ id: 'c1', nombre: 'Cliente', rut: '1-9' }],
       cuentas: { a: { clave: 'x', usuario: secretaria }, b: { clave: 'x', usuario: { id: 'u2', nombre: 'Chofer', rol: 'chofer' } } },
     })
     await r.iniciarSesion('a', 'x')
@@ -113,7 +113,7 @@ describe('memoryRepo.crearTrabajo', () => {
   })
 
   it('un área sin etapas no se puede recibir', async () => {
-    const repo = crearMemoryRepo({ usuario: secretaria, clientes: [{ id: 'c1', nombre: 'C', rut: '1-9', recorridoId: null }] })
+    const repo = crearMemoryRepo({ usuario: secretaria, clientes: [{ id: 'c1', nombre: 'C', rut: '1-9' }] })
     await expect(repo.crearTrabajo(datos)).rejects.toThrow('El área no tiene etapas configuradas.')
   })
 })

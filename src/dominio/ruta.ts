@@ -1,5 +1,5 @@
 import type { FilaListo } from './listo'
-import type { Cliente, Recorrido, Visita } from './tipos'
+import type { Asignacion, Cliente, Recorrido, Visita } from './tipos'
 import { diaSemana } from './fechas'
 
 export type Confirmacion = Visita['confirmada']
@@ -10,10 +10,14 @@ export const NOTA_VISITA_MAXIMA = 200
 export interface Parada {
   clienteId: string
   clienteNombre: string
-  /** Recorrido del día al que pertenece; null si es una parada extra (visita fuera de su día o cliente sin recorrido). */
+  /** Recorrido del día al que pertenece; null si es una parada extra (visita fuera de sus días o cliente sin recorrido). */
   recorridoId: string | null
   recorridoNombre: string | null
   dia: number | null
+  /** true si el cliente es fijo en el recorrido de ese día; false si es "a pedido" o una parada extra. */
+  fija: boolean
+  /** Orden sugerido dentro del recorrido (0 en las paradas extra). El chofer decide el orden real. */
+  orden: number
   /** Trabajos con unidades listas que salen por ruta propia. */
   entregar: FilaListo[]
   visitaId?: string
@@ -27,11 +31,11 @@ export interface RutaDelDia {
   /** Paradas con algo que entregar por ruta propia (van primero). */
   paradas: Parada[]
   /**
-   * Paradas sin nada que entregar: todos los demás clientes cuyo recorrido sale ese día, y las
-   * visitas extra (solicitadas o confirmadas "sí") sin entregas. Se pasa a retirar.
+   * Paradas sin nada que entregar: los clientes FIJOS de los recorridos de ese día, los "a pedido"
+   * con visita solicitada o confirmada "sí", y las visitas extra sin entregas. Se pasa a retirar.
    */
   pasarARetirar: Parada[]
-  /** Listo para salir por ruta propia, de clientes sin recorrido asignado (o con un recorrido que ya no existe). */
+  /** Listo para salir por ruta propia, de clientes sin ningún recorrido asignado (o solo recorridos que ya no existen). */
   sinRecorrido: FilaListo[]
   /** Listo para que el cliente retire en el mostrador (salida = cliente). */
   retiranEnMostrador: FilaListo[]
@@ -41,7 +45,10 @@ export interface RutaDelDia {
 
 const porNombre = (a: FilaListo, b: FilaListo) => a.clienteNombre.localeCompare(b.clienteNombre, 'es') || a.numero - b.numero
 
-/** Ordena paradas (sin modificar la lista recibida): por recorrido (nombre), las extra al final, y por cliente. */
+/**
+ * Ordena paradas (sin modificar la lista recibida): por recorrido (nombre), las extra al final, y
+ * dentro de cada recorrido por `orden` y luego por cliente.
+ */
 export function ordenarParadas(paradas: Parada[]): Parada[] {
   return [...paradas].sort((a, b) => {
     if (a.recorridoId !== b.recorridoId) {
@@ -49,27 +56,51 @@ export function ordenarParadas(paradas: Parada[]): Parada[] {
       if (b.recorridoNombre === null) return -1
       return a.recorridoNombre.localeCompare(b.recorridoNombre, 'es') || (a.recorridoId! < b.recorridoId! ? -1 : 1)
     }
-    return a.clienteNombre.localeCompare(b.clienteNombre, 'es')
+    return a.orden - b.orden || a.clienteNombre.localeCompare(b.clienteNombre, 'es')
   })
 }
 
+/** Minúsculas, sin tildes y con los espacios normalizados: para comparar nombres escritos a mano. */
+export function normalizarNombre(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
 /**
- * Ruta de un día (`fecha` = 'YYYY-MM-DD', día calendario de Chile). Entran TODOS los clientes cuyo
- * recorrido sale ese día de la semana, y cualquier otro cliente con una visita ese día que fue
- * solicitada o confirmada "sí" (parada extra). Los que tienen algo listo para entregar por ruta
- * propia van en `paradas`; los demás en `pasarARetirar`. Una visita confirmada "no" no oculta la
- * parada: sale marcada. Requieren confirmación las paradas de clientes cuyo recorrido es lejano
- * (también si son una visita extra fuera de su día). Sábado y domingo no hay ruta.
+ * Recorrido de la fecha cuyo chofer titular es `nombre` (el nombre del perfil), comparando sin
+ * mayúsculas, tildes ni espacios sobrantes. undefined si no hay ninguno (o es fin de semana).
+ */
+export function recorridoDelChofer(recorridos: Recorrido[], fecha: string, nombre: string): Recorrido | undefined {
+  const dia = diaSemana(fecha)
+  const buscado = normalizarNombre(nombre)
+  if (buscado === '') return undefined
+  return recorridos.find((r) => r.dia === dia && r.chofer !== undefined && normalizarNombre(r.chofer) === buscado)
+}
+
+/**
+ * Ruta de un día (`fecha` = 'YYYY-MM-DD', día calendario de Chile). Para cada recorrido que sale ese
+ * día de la semana, sus clientes asignados (cliente_recorridos):
+ * - FIJOS: entran siempre (con algo que entregar en `paradas`; si no, en `pasarARetirar`).
+ * - A PEDIDO: entran solo si tienen algo listo para entregar por ruta propia, o una visita ese día
+ *   solicitada o confirmada "sí".
+ * Además entra cualquier otro cliente con una visita ese día solicitada o confirmada "sí" (parada
+ * extra, sin recorrido del día). Una visita confirmada "no" no oculta la parada: sale marcada.
+ * Requieren confirmación las paradas de un recorrido lejano y las visitas marcadas así; una visita
+ * extra usa el "lejano" del recorrido del cliente de ESE día (si no tiene, no). Sábado y domingo no hay ruta.
  *
- * Nada listo desaparece: lo de clientes sin recorrido va a `sinRecorrido`, y lo que retira el cliente
- * o va por encomienda (según la modalidad de salida del trabajo) va a sus propias listas.
- * Orden: por recorrido (nombre), las paradas extra al final, y dentro de cada uno por cliente.
+ * Si un cliente está en dos recorridos del MISMO día sale una sola vez (sus entregas no se
+ * duplican), en el primero según: fijo antes que a pedido, menor `orden`, nombre del recorrido, id.
+ *
+ * Nada listo desaparece: lo de clientes sin ningún recorrido va a `sinRecorrido`, lo que retira el
+ * cliente o va por encomienda a sus propias listas, y lo de clientes cuyos recorridos son de otros
+ * días queda para esos días (la pantalla lo cuenta aparte).
+ * Orden: por recorrido (nombre), las paradas extra al final; dentro de cada uno por `orden` y cliente.
  */
 export function armarRuta(
   fecha: string,
   filas: FilaListo[],
   clientes: Cliente[],
   recorridos: Recorrido[],
+  asignaciones: Asignacion[],
   visitas: Visita[],
 ): RutaDelDia {
   const dia = diaSemana(fecha)
@@ -82,52 +113,62 @@ export function armarRuta(
   const retiranEnMostrador = listas.filter((f) => f.salida === 'cliente').sort(porNombre)
   const porEncomienda = listas.filter((f) => f.salida === 'encomienda').sort(porNombre)
   const porRuta = listas.filter((f) => f.salida === 'ruta_propia')
+  const porRutaDe = new Map<string, FilaListo[]>()
+  for (const f of porRuta) porRutaDe.set(f.clienteId, [...(porRutaDe.get(f.clienteId) ?? []), f])
 
-  const recorridoDe = (clienteId: string) => {
-    const id = clientePorId.get(clienteId)?.recorridoId
-    return id ? recorridoPorId.get(id) : undefined
+  // Asignaciones vigentes (a recorridos que existen); y la del día de cada cliente (regla de desempate arriba).
+  const conRecorrido = new Set<string>()
+  const delDia = new Map<string, { a: Asignacion; r: Recorrido }>()
+  const antes = (x: { a: Asignacion; r: Recorrido }, y: { a: Asignacion; r: Recorrido }) =>
+    Number(y.a.fija) - Number(x.a.fija) || x.a.orden - y.a.orden || x.r.nombre.localeCompare(y.r.nombre, 'es') || (x.r.id < y.r.id ? -1 : x.r.id > y.r.id ? 1 : 0)
+  for (const a of asignaciones) {
+    const r = recorridoPorId.get(a.recorridoId)
+    if (!r) continue
+    conRecorrido.add(a.clienteId)
+    if (r.dia !== dia) continue
+    const previa = delDia.get(a.clienteId)
+    const esta = { a, r }
+    if (!previa || antes(esta, previa) < 0) delDia.set(a.clienteId, esta)
   }
 
   const paradas = new Map<string, Parada>()
-  const crearParada = (clienteId: string, nombre: string): Parada => {
-    const recorrido = recorridoDe(clienteId)
-    const delDia = recorrido && recorrido.dia === dia ? recorrido : undefined
+  const crearParada = (clienteId: string, asignada?: { a: Asignacion; r: Recorrido }): Parada => {
     const visita = visitaPorCliente.get(clienteId)
     const p: Parada = {
       clienteId,
-      clienteNombre: clientePorId.get(clienteId)?.nombre ?? nombre,
-      recorridoId: delDia?.id ?? null,
-      recorridoNombre: delDia?.nombre ?? null,
-      dia: delDia?.dia ?? null,
-      entregar: [],
+      clienteNombre: clientePorId.get(clienteId)?.nombre ?? 'Cliente desconocido',
+      recorridoId: asignada?.r.id ?? null,
+      recorridoNombre: asignada?.r.nombre ?? null,
+      dia: asignada?.r.dia ?? null,
+      fija: asignada?.a.fija ?? false,
+      orden: asignada?.a.orden ?? 0,
+      entregar: [...(porRutaDe.get(clienteId) ?? [])].sort((a, b) => a.numero - b.numero),
       confirmada: visita?.confirmada ?? 'sin_respuesta',
-      requiereConfirmacion: (recorrido?.lejano ?? false) || (visita?.requiereConfirmacion ?? false),
+      requiereConfirmacion: (asignada?.r.lejano ?? false) || (visita?.requiereConfirmacion ?? false),
       solicitada: visita?.solicitada ?? false,
     }
     if (visita) p.visitaId = visita.id
     if (visita?.nota) p.nota = visita.nota
     return p
   }
+  const pedida = (clienteId: string) => {
+    const v = visitaPorCliente.get(clienteId)
+    return !!v && (v.solicitada || v.confirmada === 'si')
+  }
 
   if (dia <= 5) {
-    for (const c of clientes) {
-      if (recorridoDe(c.id)?.dia === dia) paradas.set(c.id, crearParada(c.id, c.nombre))
+    for (const [clienteId, asignada] of delDia) {
+      if (asignada.a.fija || porRutaDe.has(clienteId) || pedida(clienteId)) paradas.set(clienteId, crearParada(clienteId, asignada))
     }
     for (const v of visitaPorCliente.values()) {
-      if (paradas.has(v.clienteId)) continue
-      if (v.solicitada || v.confirmada === 'si') paradas.set(v.clienteId, crearParada(v.clienteId, 'Cliente desconocido'))
+      if (paradas.has(v.clienteId) || delDia.has(v.clienteId)) continue
+      if (pedida(v.clienteId)) paradas.set(v.clienteId, crearParada(v.clienteId))
     }
   }
 
-  const sinRecorrido: FilaListo[] = []
-  for (const f of porRuta) {
-    const p = paradas.get(f.clienteId)
-    if (p) p.entregar.push(f)
-    else if (!recorridoDe(f.clienteId)) sinRecorrido.push(f)
-  }
+  const sinRecorrido = porRuta.filter((f) => !paradas.has(f.clienteId) && !conRecorrido.has(f.clienteId))
 
   const todas = [...paradas.values()]
-  for (const p of todas) p.entregar.sort((a, b) => a.numero - b.numero)
   return {
     paradas: ordenarParadas(todas.filter((p) => p.entregar.length > 0)),
     pasarARetirar: ordenarParadas(todas.filter((p) => p.entregar.length === 0)),

@@ -12,12 +12,14 @@ function crearFalso(tablas: Record<string, Fila[]>, tope = 1000) {
   const sb = {
     from: (t: string) => ({
       select: () => ({
-        order: (col: string) => ({
-          range: (d: number, h: number) => {
+        order: (col: string) => {
+          const range = (d: number, h: number) => {
             const orden = [...(tablas[t] ?? [])].sort((a, b) => String(a[col]).localeCompare(String(b[col])))
             return Promise.resolve({ data: orden.slice(d, Math.min(h + 1, d + tope)), error: null })
-          },
-        }),
+          }
+          // cliente_recorridos no tiene id: se ordena por (cliente_id, recorrido_id)
+          return { range, order: () => ({ range }) }
+        },
       }),
     }),
     channel: vi.fn(() => canal),
@@ -40,8 +42,9 @@ describe('supabaseRepo.cargarTodo', () => {
         id: `m${pad(i)}`, linea_id: `l${pad(i)}`, cantidad: 2, etapa_origen_id: null, etapa_destino_id: 'e1', usuario_id: 'u', creado_en: '2026-11-20T12:00:00Z',
       })),
       etapas: [{ id: 'e1', area: 'afilado', orden: 1, nombre: 'Recibido', es_listo: false, es_final: false }],
-      clientes: [{ id: 'c1', nombre: 'A', rut: '1-9', contacto: null, direccion: null, recorrido_id: null }],
-      recorridos: [{ id: 'r1', nombre: 'Norte', dia: 2, camioneta: 'C', lejano: false }],
+      clientes: [{ id: 'c1', nombre: 'A', rut: '1-9', contacto: null, direccion: null }],
+      recorridos: [{ id: 'r1', nombre: 'Norte', dia: 2, camioneta: 'C', lejano: false, chofer: 'Angelo' }],
+      cliente_recorridos: Array.from({ length: N }, (_, i) => ({ cliente_id: `c${pad(i)}`, recorrido_id: 'r1', fija: i % 2 === 0, orden: i })),
     })
     const d = await crearRepoConCliente(sb).cargarTodo()
     expect(d.trabajos).toHaveLength(N)
@@ -50,7 +53,9 @@ describe('supabaseRepo.cargarTodo', () => {
     expect(d.movimientos[0]).toMatchObject({ lineaId: 'l00000', etapaDestinoId: 'e1', etapaOrigenId: null })
     expect(d.etapas[0]).toEqual({ id: 'e1', area: 'afilado', orden: 1, nombre: 'Recibido', esListo: false, esFinal: false })
     expect(d.trabajos[0]).toMatchObject({ numero: 1, salida: 'cliente' })
-    expect(d.recorridos[0]).toMatchObject({ nombre: 'Norte', dia: 2 })
+    expect(d.recorridos[0]).toMatchObject({ nombre: 'Norte', dia: 2, chofer: 'Angelo' })
+    expect(d.asignaciones).toHaveLength(N)
+    expect(d.asignaciones.find((a) => a.clienteId === 'c00001')).toEqual({ clienteId: 'c00001', recorridoId: 'r1', fija: false, orden: 1 })
   })
 })
 
