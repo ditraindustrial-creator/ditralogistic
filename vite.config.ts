@@ -11,14 +11,25 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Trazabilidad',
+        id: '/',
+        name: 'Trazabilidad del taller',
         short_name: 'Trazabilidad',
+        description: 'Seguimiento de afilado y encuadernación: qué hay listo, rutas y entregas.',
         lang: 'es-CL',
+        dir: 'ltr',
         display: 'standalone',
+        orientation: 'portrait',
         start_url: '/',
+        scope: '/',
         background_color: '#ffffff',
         theme_color: '#0f766e',
-        icons: [{ src: 'icono.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        // Los PNG se generan con `node scripts/generar-iconos.mjs` (viven en public/).
+        icons: [
+          { src: 'icono-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icono-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icono-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icono.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+        ],
       },
     }),
   ],

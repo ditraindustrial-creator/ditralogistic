@@ -89,7 +89,7 @@ export default function App({ repo }: { repo: Repo }) {
 
   return (
     <div className="mx-auto max-w-md p-4 md:max-w-3xl">
-      <header className="mb-4 flex items-center justify-between">
+      <header className="mb-4 flex items-center justify-between print:hidden">
         <span className="text-lg font-semibold">Hola, {usuario.nombre}</span>
         <button
           className="rounded border px-4 py-2"
