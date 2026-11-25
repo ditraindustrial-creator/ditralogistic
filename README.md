@@ -98,8 +98,9 @@ supabase/
   seed/primer_admin.sql    plantilla para crear el primer admin y otros usuarios
 scripts/
   sql-local/               corre migraciones y pruebas SQL en un PostgreSQL local (sin Docker)
-  generar-iconos.mjs       genera los PNG de public/ desde public/icono.svg
-  verificar-pwa.mjs        comprueba manifest, íconos y service worker
+  generar-iconos.mjs       (npm run iconos) genera los PNG de public/ desde public/icono.svg
+  verificar-pwa.mjs        (npm run verificar-pwa) comprueba manifest, íconos y service worker
+  navegador.mjs            ayuda común: abre Chromium con Playwright o explica qué falta
 docs/
   puesta-en-marcha.md      checklist de lanzamiento + prueba de humo
   superpowers/specs|plans  diseño y plan originales
@@ -119,14 +120,18 @@ Sin `.env` la app muestra "Falta configurar la aplicación".
 npx tsc --noEmit                  # tipos
 npx vitest run                    # 30 archivos de prueba (equivale a npm test)
 npm run build                     # tsc + build de producción + service worker
-node scripts/verificar-pwa.mjs    # PWA instalable (necesita Playwright con Chromium; no es parte de vitest)
-node scripts/generar-iconos.mjs   # solo si cambias public/icono.svg
+npm run verificar-pwa             # PWA instalable (manifest, íconos, service worker); no es parte de vitest
+npm run iconos                    # solo si cambias public/icono.svg: regenera los PNG de public/
 ```
+`verificar-pwa` e `iconos` usan Playwright (devDependency fijada en 1.63.0). **Una sola vez por máquina** hay que bajar su navegador: `npx playwright install chromium`. Si ya existe un Chromium, se puede indicar con `PLAYWRIGHT_CHROMIUM_PATH=/ruta/a/chromium`. Si falta Playwright o el navegador, los scripts terminan con un mensaje en español que dice qué hacer.
 Pruebas SQL (PostgreSQL 16 local; ejecutar como usuario con permisos de superusuario):
 ```bash
 su postgres -c "bash scripts/sql-local/correr_pruebas.sh"
 ```
 Crea una base desechable, aplica `supabase/migrations/*.sql` con stubs de auth, corre `supabase/tests/*.test.sql` y dos pruebas de carrera con sesiones paralelas. Variables estándar `PG*` y `DB=<nombre>` se respetan. El workflow de GitHub hace lo mismo con un contenedor `postgres:16` (esa parte del CI no se pudo ejecutar localmente: validarla en el primer push).
+
+## Integración continua (GitHub Actions)
+`.github/workflows/ci.yml` corre en cada push y pull request. El trabajo **`app`** (tipos, pruebas y build, Node 22) es el que manda: si falla, el cambio está mal. El trabajo **`sql`** (migraciones y pruebas SQL en un contenedor `postgres:16`) está marcado `continue-on-error`: **nunca se ha visto en verde**, así que su primer resultado hay que mirarlo a mano; si pasa, quitar esa línea del workflow para hacerlo bloqueante. Un fallo de `sql` no oculta uno de `app` (son trabajos independientes; revisar cada uno por separado en GitHub).
 
 ## Variables de entorno
 | Variable | Valor | Notas |
@@ -145,7 +150,7 @@ Orden y contenido: ver la tabla en `docs/puesta-en-marcha.md`. Aplicar en Supaba
 - **Agregar un recorrido.** Sin código: Administración → Recorridos (nombre, día 1-5 = lunes a viernes, camioneta, "lejano" = requiere confirmación el día antes). Luego asignar clientes en la pestaña Clientes.
 - **Cambiar o agregar una modalidad** (`cliente`, `encomienda`, `ruta_propia`). Toca: tipo SQL `modalidad` (migración con `alter type modalidad add value`) y las validaciones literales de `crear_trabajo` en `0007_ruta.sql` (y `0005_recepcion.sql`), `src/dominio/tipos.ts` (`Modalidad`), `src/dominio/trabajo.ts` y `src/dominio/ruta.ts` (reglas de qué entra a la ruta), `src/pantallas/recepcion/Recepcion.tsx` (`MODALIDADES`), `src/pantallas/ruta/comun.tsx` (etiquetas) y `RutaManana.tsx`. Pruebas en `trabajo.test.ts`, `ruta.test.ts`, `Recepcion.test.tsx`, `ruta.test.sql`.
 - **Agregar una pantalla.** Tipo `Pantalla` (`tipos.ts`), permisos (`permisos.ts`), entrada en `PANTALLAS` y renderizado en `App.tsx`, componente en `src/pantallas/<nombre>/`. Controles que no deben imprimirse llevan `print:hidden`.
-- **Cambiar el ícono o los colores de la PWA.** Editar `public/icono.svg` y correr `node scripts/generar-iconos.mjs`; el manifest está en `vite.config.ts` (`VitePWA`), los colores `#0f766e` (tema) y `#ffffff` (fondo).
+- **Cambiar el ícono o los colores de la PWA.** Editar `public/icono.svg` y correr `npm run iconos`; el manifest está en `vite.config.ts` (`VitePWA`), los colores `#0f766e` (tema) y `#ffffff` (fondo).
 
 ## Decisiones y límites conocidos
 - Diseño completo y razones: `docs/superpowers/specs/2026-11-24-trazabilidad-logistica-design.md`. Plan por tareas: `docs/superpowers/plans/2026-11-24-trazabilidad-logistica.md`.

@@ -106,7 +106,17 @@ Usa dos aparatos: por ejemplo un celular y un computador, o dos celulares. Los d
 | 19 | Todos | Cerrar sesión y entrar de nuevo; cerrar y reabrir la app instalada. | Vuelve a la sesión o pide clave; nunca muestra datos sin iniciar sesión. |
 | 20 | Admin | Revisar **Authentication → Users** y la tabla `movimientos`. | Cada movimiento registra el usuario correcto y la hora. |
 
-**Cierre de la prueba:** borra los datos de práctica (en el SQL Editor: `truncate movimientos, lineas, trabajos, visitas cascade;` y borra a mano los clientes y productos de prueba en Administración o en el Table Editor). Los usuarios reales, las etapas y los recorridos se conservan.
+**Cierre de la prueba:**
+
+> **ATENCIÓN: SOLO si el proyecto no tiene datos reales. Esto borra todo y no se puede deshacer.** Si ya hay trabajos reales, NO ejecutes esto: exporta primero cada tabla (Table Editor → Export to CSV) o confirma que existe un respaldo, y borra a mano solo las filas de prueba.
+
+En el SQL Editor:
+
+```sql
+truncate movimientos, lineas, trabajos, visitas restart identity;
+```
+
+Esto vacía **exactamente** `movimientos`, `lineas`, `trabajos` y `visitas` (los trabajos de práctica y su historial) y reinicia el contador de N.º de trabajo en 1. **No toca** `perfiles` (usuarios), `clientes`, `recorridos`, `productos` ni `etapas`; se verificó contra las claves foráneas de las migraciones y se probó en la base local. Los clientes y productos de práctica, si los hay, bórralos a mano en Administración o en el Table Editor.
 
 ## Si algo falla
 
@@ -120,7 +130,7 @@ Usa dos aparatos: por ejemplo un celular y un computador, o dos celulares. Los d
 
 **"Qué hay listo" no se actualiza solo.** (1) Repite el paso 3 y confirma que `movimientos` está en la publicación `supabase_realtime`. (2) En Supabase → Project Settings → API / Realtime, confirma que Realtime está habilitado. (3) Mira la consola del navegador del dispositivo (en el computador: F12) por errores de WebSocket; una red de empresa que bloquee WebSockets lo impide. (4) Mientras tanto, recargar la pantalla muestra el dato correcto: el estado real está siempre en la base; solo la actualización en vivo falla.
 
-**Un error al aplicar una migración.** Anota el número de la migración y el mensaje completo. Causas típicas: se ejecutó fuera de orden (`relation ... does not exist`) o se ejecutó dos veces (`already exists`). Si una migración falló a medias, no sigas con la siguiente: lo más simple en un proyecto nuevo y vacío es borrar las tablas y volver a empezar (Project Settings → Database → o crear un proyecto nuevo) y aplicar de nuevo desde la 0001. Entrégale el mensaje al asistente de IA; las migraciones se probaron en PostgreSQL 16 con una simulación de Supabase, así que pueden existir diferencias menores con el real.
+**Un error al aplicar una migración.** Anota el número de la migración y el mensaje completo. Causas típicas: se ejecutó fuera de orden (`relation ... does not exist`) o se ejecutó dos veces (`already exists`). Si una migración falló a medias, no sigas con la siguiente. **ATENCIÓN: volver a empezar de cero BORRA TODOS LOS DATOS y no se puede deshacer. Hazlo SOLO si el proyecto no tiene datos reales** (un proyecto recién creado y vacío). Si ya hay datos reales, primero exporta cada tabla (Table Editor → Export to CSV) o confirma que hay un respaldo, y pide ayuda en vez de borrar. En un proyecto vacío, lo más simple es crear un proyecto Supabase nuevo y aplicar las migraciones desde la 0001 (o borrar el proyecto fallido). Entrégale el mensaje al asistente de IA; las migraciones se probaron en PostgreSQL 16 con una simulación de Supabase, así que pueden existir diferencias menores con el real.
 
 **Aparece "Falta configurar la aplicación".** Faltan `VITE_SUPABASE_URL` o `VITE_SUPABASE_ANON_KEY` en el hosting. Agrégalas y vuelve a desplegar.
 

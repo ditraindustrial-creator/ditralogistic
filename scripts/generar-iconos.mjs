@@ -1,13 +1,11 @@
 // Genera los íconos PNG de la app a partir de public/icono.svg, usando el Chromium que trae Playwright.
 // Uso:  node scripts/generar-iconos.mjs
-// Requiere Playwright instalado (global o local). No descarga nada.
-import { createRequire } from 'node:module'
+// Equivale a `npm run iconos`. Requiere `npm install` y, una vez, `npx playwright install chromium`.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
-const { chromium } = require('playwright')
+import { abrirNavegador } from './navegador.mjs'
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..')
 const svg = readFileSync(join(raiz, 'public/icono.svg'), 'utf8')
@@ -30,7 +28,7 @@ const iconos = [
   ['apple-touch-icon.png', 180, cuadrado(180, 0.8)],
 ]
 
-const navegador = await chromium.launch()
+const navegador = await abrirNavegador()
 try {
   for (const [archivo, px, contenido] of iconos) {
     const pagina = await navegador.newPage({ viewport: { width: px, height: px } })

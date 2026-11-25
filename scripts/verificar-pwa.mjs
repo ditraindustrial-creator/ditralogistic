@@ -1,14 +1,13 @@
 // Comprueba que la PWA es instalable: construye, sirve con `vite preview` y revisa con Chromium
 // (Playwright) el manifest, los íconos (existen y miden lo que dicen) y el service worker.
-// Uso:  node scripts/verificar-pwa.mjs          (usa dist/ ya construido si pasas --sin-build)
+// Uso:  npm run verificar-pwa   (o: node scripts/verificar-pwa.mjs [--sin-build])
+// Requiere `npm install` y, una vez, `npx playwright install chromium`.
 // No forma parte de `npm test`. No toca Internet ni Supabase.
-import { createRequire } from 'node:module'
 import { spawn, execSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
-const { chromium } = require('playwright')
+import { abrirNavegador } from './navegador.mjs'
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PUERTO = 4173
 const BASE = `http://localhost:${PUERTO}`
@@ -24,7 +23,7 @@ if (!process.argv.includes('--sin-build')) {
   execSync('npm run build', { cwd: raiz, stdio: 'ignore' })
 }
 const servidor = spawn('npx', ['vite', 'preview', '--port', String(PUERTO), '--strictPort'], { cwd: raiz, stdio: 'ignore' })
-const navegador = await chromium.launch()
+const navegador = await abrirNavegador()
 try {
   for (let i = 0; i < 50; i++) {
     try {
