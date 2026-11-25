@@ -19,7 +19,7 @@
 - Etapas iniciales — afilado: Recibido → En taller → Afilado → Listo → Entregado; encuadernación: Recibido → En producción → Terminado → Entregado. Editables en la app.
 - El avance es por línea y por cantidad; el estado se calcula desde `movimientos` (usuario, fecha y hora en cada uno).
 - Sin integración con Ramaflex, sin Excel de facturación, sin firma digital, sin modo sin conexión, sin WhatsApp automático, sin seguimiento por pieza (segunda etapa). Prueba de entrega = documento firmado en papel; la app solo guarda el número, sin foto.
-- Cada cliente tiene un solo recorrido y día fijos. Dos camionetas diarias de lunes a viernes más una de emergencia.
+- Un cliente puede estar en varios recorridos (tabla `cliente_recorridos`), en cada uno fijo o a pedido y con un orden sugerido; un recorrido es un día + un chofer titular (Task 10). Dos camionetas diarias de lunes a viernes más una de emergencia.
 - Horas y días se calculan en `America/Santiago`.
 
 ## Review Focus
@@ -185,6 +185,16 @@
 - [ ] **Step 5: Commit** `chore: despliegue y guía de mantenimiento`.
 
 ---
+
+### Task 10: Clientes en varios recorridos
+
+Cambio de requisito confirmado por el dueño (hoja real de 10 recorridos: lunes a viernes, choferes titulares Rodrigo Lagos y Angelo; muchos clientes en 2-3 días; nombres entre paréntesis = a pedido; el orden de la hoja es sugerido).
+
+- **SQL** `0009_cliente_recorridos.sql`: `recorridos.chofer` (opcional); tabla `cliente_recorridos(cliente_id, recorrido_id, fija, orden ≥ 0)` con PK del par y borrado en cascada; migra `clientes.recorrido_id` como fijas y la elimina. RLS: leen todos los perfiles; escribe solo gestión. Pruebas `supabase/tests/cliente_recorridos.test.sql` (matriz de roles, anon, cascada, restricciones).
+- **Dominio**: `armarRuta(fecha, filas, clientes, recorridos, asignaciones, visitas)` (fijos siempre; a pedido solo con algo listo por ruta propia o visita solicitada/confirmada; orden por `orden` y nombre; un solo lugar por día), `recorridoDelChofer`, `resumenListo(datos, hoy)` con `rutas` y `proximaRuta`, `importarAsignaciones` (csv.ts), `planificarAsignaciones`, `validarAsignacion`, `nombreRecorrido`, `siguienteOrden` (maestros.ts).
+- **Repo**: `listarAsignaciones`, `guardarAsignaciones` (upsert por par en lotes de 500, idempotente), `quitarAsignacion`; `cargarTodo` trae `asignaciones`.
+- **Pantallas**: Administración (chofer del recorrido, panel de recorridos por cliente, importador CSV; Maestros dividido en Importador, PestanaRecorridos y AsignacionesCliente), Qué hay listo (agrupa por próxima pasada, "Rutas: Lun · Mié · Vie"), Ruta de mañana y Hoja de ruta (insignias Fijo / A pedido; la hoja abre en el recorrido del chofer con sesión). "Cliente nuevo" ya no elige recorrido.
+- **Docs**: README, puesta en marcha (prueba de humo de 23 puntos), spec §5.2 "Recorridos múltiples y visitas a pedido", plantilla sintética `docs/plantilla-asignaciones.csv`.
 
 ## Auto-revisión
 

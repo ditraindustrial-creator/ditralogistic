@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { parsearCsv, normalizarRut, importarClientes, importarProductos, importarAsignaciones, decodificarArchivo } from './csv'
 import type { Cliente, Recorrido } from './tipos'
+import plantilla from '../../docs/plantilla-asignaciones.csv?raw'
 
 const BOM = '﻿'
 
@@ -329,5 +330,20 @@ describe('importarAsignaciones', () => {
   it('una columna elegida que no existe se informa una sola vez', () => {
     const r = importar([{ recorrido: 'x', rut: '1-9' }], { recorrido: 'Ruta', rut: 'rut' })
     expect(r).toEqual({ asignaciones: [], errores: [{ fila: 0, motivo: 'La columna "Ruta" no existe en el archivo.' }] })
+  })
+})
+
+describe('docs/plantilla-asignaciones.csv (datos sintéticos)', () => {
+  it('se importa sin errores contra sus recorridos y clientes de ejemplo', () => {
+    const filas = parsearCsv(decodificarArchivo(new TextEncoder().encode(plantilla).buffer as ArrayBuffer))
+    const recorridos: Recorrido[] = ['Lunes · Chofer Uno', 'Miércoles · Chofer Uno', 'Miércoles · Chofer Dos', 'Viernes · Chofer Dos'].map((nombre, i) => ({
+      id: `r${i}`, nombre, dia: ([1, 3, 3, 5] as const)[i], camioneta: 'C', lejano: false,
+    }))
+    const clientes: Cliente[] = ['11111111-1', '22222222-2', '33333333-3', '44444444-4'].map((rut, i) => ({ id: `c${i}`, nombre: `Cliente ${i}`, rut }))
+    const r = importarAsignaciones(filas, { recorrido: 'recorrido', rut: 'rut', fija: 'fija', orden: 'orden' }, recorridos, clientes)
+    expect(r.errores).toEqual([])
+    expect(r.asignaciones).toHaveLength(6)
+    expect(r.asignaciones.filter((a) => a.clienteId === 'c0').map((a) => a.recorridoId)).toEqual(['r0', 'r1', 'r3'])
+    expect(r.asignaciones.find((a) => a.clienteId === 'c3')).toEqual({ clienteId: 'c3', recorridoId: 'r3', fija: false, orden: 2 })
   })
 })

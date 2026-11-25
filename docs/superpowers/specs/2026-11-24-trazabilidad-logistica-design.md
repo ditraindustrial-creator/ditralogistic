@@ -67,8 +67,9 @@ La app debe dar visibilidad de ese estado en tiempo real, usada desde celular o 
 - Idioma de la interfaz: español de Chile.
 
 ### 5.2 Modelo de datos
-- **clientes**: nombre, RUT, contacto, dirección, **recorrido y día asignados** (para saber cuándo les toca la camioneta).
-- **recorridos**: nombre, día de la semana, camioneta asignada. Hay dos camionetas diarias de lunes a viernes y una de emergencia para urgentes.
+- **clientes**: nombre, RUT, contacto, dirección. Sus recorridos van aparte (ver **cliente_recorridos**): un cliente puede estar en varios.
+- **recorridos**: nombre, día de la semana, camioneta asignada, chofer titular (opcional) y si es lejano. Un recorrido es un día + un chofer: la hoja real tiene 10 (lunes a viernes, con los choferes titulares Rodrigo Lagos y Angelo, p. ej. "Lunes · Rodrigo Lagos"). Hay dos camionetas diarias de lunes a viernes y una de emergencia para urgentes.
+- **cliente_recorridos**: cliente, recorrido, **fija** (sí/no) y **orden** (0 o más). Ver "Recorridos múltiples y visitas a pedido".
 - **trabajos** (el lote de un cliente): cliente, área (afilado o encuadernación), modalidad de entrada, modalidad de salida, fecha y hora de recepción, referencias de documento (guía de retiro, guía de despacho, factura: texto libre), transporte de encomienda si aplica (empresa y número), marca de urgente, notas.
 - **lineas**: trabajo, tipo de herramienta o trabajo (texto con sugerencias desde un catálogo editable), cantidad total, y nota opcional (por ejemplo "70 cm").
 - **etapas**: área, orden, nombre. Editables por el administrador. Valores iniciales propuestos [mi decisión]:
@@ -77,11 +78,21 @@ La app debe dar visibilidad de ese estado en tiempo real, usada desde celular o 
 - **movimientos** (registro de todo lo que pasa): línea, cantidad movida, etapa origen, etapa destino, usuario, fecha y hora. El estado actual de una línea se calcula a partir de los movimientos (cuántas unidades hay en cada etapa), lo que da trazabilidad y soporta entregas parciales sin lógica especial.
 - **usuarios** con roles: administrador, secretaria, chofer, operario (afilado), operario (encuadernación), jefe de taller.
 
+#### Recorridos múltiples y visitas a pedido (respuesta del dueño, Task 10)
+La hoja de ruta semanal real muestra que muchos clientes salen en **varios días** (habitualmente 2 o 3: por ejemplo lunes, miércoles y viernes). Por eso un cliente no tiene "un recorrido y un día fijos": tiene una fila en `cliente_recorridos` por cada recorrido en que está.
+- **Fijo** (`fija = sí`): al cliente se le visita siempre ese día. Si no hay nada que entregar, igual sale en la ruta ("Pasar a retirar").
+- **A pedido** (`fija = no`; en la hoja, los nombres escritos entre paréntesis): está en la ruta de ese día pero no se le visita siempre; sale solo si tiene algo listo para entregar por ruta propia o una visita solicitada o confirmada "sí" para esa fecha.
+- **Orden**: el orden de arriba hacia abajo de la hoja es el orden sugerido de visita; no es fijo (el chofer decide cada día). La ruta ordena por `orden` y luego por nombre.
+- Si (raro) un cliente está en dos recorridos del mismo día, sale una sola vez: primero el fijo, luego el de menor orden, luego por nombre del recorrido; sus entregas no se duplican.
+- Lo listo de un cliente cuyos recorridos son de otros días no desaparece: "Qué hay listo" muestra su **próxima pasada** (el primer día de ruta desde hoy, hoy incluido) y "Ruta de mañana" lo cuenta aparte. Lo de clientes **sin ningún** recorrido sale en "Sin recorrido".
+- La Hoja de ruta abre en el recorrido del día cuyo chofer titular coincide con el nombre del usuario; el chofer puede cambiarlo.
+- Las asignaciones se cargan a mano en Administración o desde un CSV `recorrido;rut;fija;orden` (idempotente por cliente y recorrido). Solo gestión las cambia; todos los usuarios con perfil las leen.
+
 ### 5.3 Pantallas
-1. **Qué hay listo** (pantalla principal): por cliente, cantidades listas vs. totales, hora en que quedó listo, recorrido y día de entrega. Filtro por área, cliente, recorrido y día.
+1. **Qué hay listo** (pantalla principal): por cliente, cantidades listas vs. totales, hora en que quedó listo, sus días de ruta y la próxima pasada de la camioneta (agrupa por ella). Filtro por área, cliente, recorrido y día (cualquiera de los del cliente).
 2. **Recepción**: crear un trabajo (cliente, modalidad, líneas con tipo y cantidad). Pensado para hacerse en 30 segundos.
 3. **Taller (afilado) y Producción (encuadernación)**: lista de líneas en curso; el operario toca una línea y mueve N unidades a la etapa siguiente.
-4. **Ruta de mañana**: lo que está listo por recorrido, para que choferes y secretaria preparen la carga y los documentos (reemplaza el listado a mano).
+4. **Ruta de mañana**: lo que está listo por recorrido, para que choferes y secretaria preparen la carga y los documentos (reemplaza el listado a mano). Cada recorrido del día con sus clientes fijos y los a pedido que tienen algo o pidieron visita, en el orden sugerido.
 5. **Hoja de ruta del chofer**: paradas por cliente con lo que se retira y lo que se entrega; el chofer marca cada parada, registra cantidades entregadas o retiradas y puede crear el retiro directamente como nuevo trabajo.
 6. **Reporte diario de encuadernación**: listo, en producción y por entregar, con horas. Se genera solo; el jefe lo ve e imprime si quiere.
 7. **Administración**: clientes, recorridos, etapas, catálogo de herramientas, usuarios.

@@ -1,6 +1,6 @@
 # Trazabilidad del taller (afilado y encuadernación)
 
-App web instalable en el celular (PWA), en español de Chile, para saber **sin ir al taller** qué hay de cada cliente, qué está listo, en qué recorrido va y a qué hora quedó listo. Reemplaza el papel y el cuaderno.
+App web instalable en el celular (PWA), en español de Chile, para saber **sin ir al taller** qué hay de cada cliente, qué está listo, cuándo pasa la camioneta y a qué hora quedó listo. Reemplaza el papel y el cuaderno.
 
 Este documento tiene dos partes: **A. Para el dueño** (sin tecnicismos) y **B. Para el asistente de IA** que mantenga el código.
 
@@ -16,27 +16,27 @@ Cada vez que llegan herramientas (cuchillos, discos, accesorios de guillotina) o
 Cada trabajo tiene una modalidad de **entrada** y una de **salida**:
 1. **Cliente lleva y retira**: el cliente trae sus herramientas al taller y viene a buscarlas.
 2. **Encomienda**: clientes de regiones; se envían por transporte (por pagar).
-3. **Recorrido propio**: nuestras camionetas pasan por el cliente según su día de recorrido, retiran y entregan.
+3. **Recorrido propio**: nuestras camionetas pasan por el cliente en sus días de recorrido (un cliente puede estar en varios: por ejemplo lunes, miércoles y viernes; cada recorrido es un día con su chofer titular), retiran y entregan. En cada recorrido el cliente es **fijo** (se pasa siempre) o **a pedido** (se pasa solo si hay algo que entregar o pidió la visita).
 
 ### Quién usa qué
 
 | Pantalla | Para qué sirve | Quién la ve |
 |---|---|---|
-| **Qué hay listo** (pantalla de inicio) | Por cliente: unidades listas vs. totales, desde qué hora, recorrido y día | Administrador, secretaria, jefe de taller, operarios |
+| **Qué hay listo** (pantalla de inicio) | Por cliente: unidades listas vs. totales, desde qué hora, sus días de ruta y la próxima pasada de la camioneta | Administrador, secretaria, jefe de taller, operarios |
 | **Recepción** | Crear un trabajo (cliente, modalidad, líneas) en unos 30 segundos; "Cliente nuevo" si el cliente aún no existe | Administrador, secretaria, jefe de taller, **chofer** (para registrar retiros en terreno) |
 | **Taller / Producción** | El operario toca una línea y mueve N unidades a la etapa siguiente | Administrador, secretaria, jefe de taller, **operarios** (cada uno solo ve su área) |
-| **Ruta de mañana** | Lo que está listo por recorrido, para preparar la carga y los documentos; todos los clientes del recorrido ("Pasar a retirar"); confirmar visitas; despachar encomiendas (con transporte) | Administrador, secretaria, jefe de taller, chofer |
+| **Ruta de mañana** | Lo que está listo por recorrido, para preparar la carga y los documentos; los clientes fijos del recorrido sin nada que entregar ("Pasar a retirar"); los a pedido solo si tienen algo o pidieron visita; confirmar visitas; despachar encomiendas (con transporte) | Administrador, secretaria, jefe de taller, chofer |
 | **Hoja de ruta** (inicio del chofer) | Paradas del día: el chofer marca la visita, registra retiros y **entrega con el número de documento** | Administrador, secretaria, jefe de taller, chofer |
 | **Reporte diario** | Encuadernación: listo hoy, en producción y por entregar, con horas; se imprime | Administrador, secretaria, jefe de taller |
-| **Administración** | Clientes (importar desde Excel y asignar recorrido), recorridos, productos | Solo administrador |
+| **Administración** | Clientes (importar desde Excel; recorridos de cada cliente: fijo o a pedido, orden, a mano o por CSV), recorridos (con chofer titular), productos | Solo administrador |
 
 Roles disponibles: `admin`, `secretaria`, `jefe_taller`, `chofer`, `operario_afilado`, `operario_encuadernacion`.
 
 ## Cómo se pone en marcha por primera vez
-Sigue paso a paso **[docs/puesta-en-marcha.md](docs/puesta-en-marcha.md)**. Incluye cómo crear el proyecto en Supabase, aplicar las migraciones, crear usuarios, publicar la app, instalarla en el celular y una **prueba de humo de 22 puntos**. Resumen de la lista:
+Sigue paso a paso **[docs/puesta-en-marcha.md](docs/puesta-en-marcha.md)**. Incluye cómo crear el proyecto en Supabase, aplicar las migraciones, crear usuarios, publicar la app, instalarla en el celular y una **prueba de humo de 23 puntos**. Resumen de la lista:
 
 1. Crear el proyecto en Supabase (cuenta de la empresa).
-2. Aplicar las 8 migraciones de `supabase/migrations/` en orden (SQL Editor).
+2. Aplicar las 9 migraciones de `supabase/migrations/` en orden (SQL Editor).
 3. Comprobar que Realtime está activo para `movimientos`.
 4. Crear al primer administrador (usuario en Authentication + `supabase/seed/primer_admin.sql`) y **desactivar "Allow new users to sign up"** en Authentication (nadie puede crearse una cuenta solo).
 5. Copiar la URL y la clave **anon** del proyecto.
@@ -110,7 +110,7 @@ src/
   data/                    repo.ts (interfaz), supabaseRepo.ts, memoryRepo.ts y sus pruebas
   pantallas/               listo/ recepcion/ taller/ ruta/ entrega/ reporte/ admin/ + useDatosEnVivo.ts
 supabase/
-  migrations/              0001..0008 (esquema, RLS, funciones), se aplican en orden
+  migrations/              0001..0009 (esquema, RLS, funciones), se aplican en orden
   tests/                   *.test.sql (pgTAP simulado)
   seed/primer_admin.sql    plantilla para crear el primer admin y otros usuarios
 scripts/
@@ -166,7 +166,8 @@ Orden y contenido: ver la tabla en `docs/puesta-en-marcha.md`. Aplicar en Supaba
 ## Cómo cambiar cosas comunes
 - **Agregar o renombrar una etapa.** Las etapas son datos (tabla `etapas`: `area, orden, nombre, es_listo, es_final`, único por `(area, orden)`). Renombrar: `update etapas set nombre = '...' where area = 'afilado' and nombre = '...'`. Agregar en el medio exige renumerar `orden` (migración nueva o SQL Editor; hacerlo en un solo `update` con cuidado por la unicidad). `es_listo = true` marca "listo para entregar" (lo que cuenta "Qué hay listo"); `es_final = true` marca "Entregado". La app no tiene el nombre de ninguna etapa escrito en código (se leen de la tabla), salvo textos de ayuda. Tras cambiar: `npx vitest run` y la prueba de humo puntos 10, 11 y 14. No hay pantalla de edición de etapas (el spec la prevé: sería una pestaña nueva en `src/pantallas/admin/Maestros.tsx` + métodos en `Repo`, ambos repos y pruebas).
 - **Agregar un rol.** (1) Migración nueva: `alter type rol add value 'nuevo_rol';` (en Postgres, el valor nuevo no se puede usar en la misma transacción: ejecutarlo solo). (2) `src/dominio/tipos.ts` (tipo `Rol`). (3) `src/dominio/permisos.ts` (pantallas del rol y `puedeEntregar`). (4) Las políticas RLS y funciones que nombran roles: `es_gestion()`, `puede_ver_area()` en `0001_esquema.sql`, y las de `0005_recepcion.sql`, `0007_ruta.sql` (`chofer_*`, `entregar_unidades`) y `0008_ajustes_finales.sql` (`movimientos_validar`, `trabajos_limitar_campos`, `crear_trabajo`, `entregar_unidades`); crear una migración que las reemplace. (5) Pruebas: `permisos.test.ts` y un `.test.sql`.
-- **Agregar un recorrido.** Sin código: Administración → Recorridos (nombre, día 1-5 = lunes a viernes, camioneta, "lejano" = requiere confirmación el día antes). Luego asignar clientes en la pestaña Clientes.
+- **Agregar un recorrido.** Sin código: Administración → Recorridos (nombre, día 1-5 = lunes a viernes, chofer titular opcional, camioneta, "lejano" = requiere confirmación el día antes). Un recorrido es un día + un chofer (p. ej. "Lunes · Rodrigo Lagos"); con el nombre vacío se arma solo así. Luego asignar clientes en la pestaña Clientes: en la tarjeta de cada cliente ("Agregar … a un recorrido", casilla "Fijo", Orden) o con el archivo "recorridos de clientes" (`recorrido;rut;fija;orden`, plantilla sintética en `docs/plantilla-asignaciones.csv`; idempotente por cliente y recorrido).
+- **Recorridos múltiples (tabla `cliente_recorridos`, 0009).** Reglas en `src/dominio/ruta.ts` (`armarRuta`): para el día de la semana de la fecha, por cada recorrido de ese día, los clientes **fijos** salen siempre y los **a pedido** solo si tienen algo listo por ruta propia o una visita solicitada / confirmada "sí". Si un cliente está en dos recorridos el mismo día sale una sola vez (fijo antes que a pedido, menor orden, nombre del recorrido). "Qué hay listo" agrupa por la próxima pasada (`resumenListo(datos, hoy)` → `proximaRuta`, hoy incluido). La Hoja de ruta abre en el recorrido cuyo chofer titular coincide con el nombre del perfil. RLS: todos los perfiles leen, solo gestión escribe.
 - **Cambiar o agregar una modalidad** (`cliente`, `encomienda`, `ruta_propia`). Toca: tipo SQL `modalidad` (migración con `alter type modalidad add value`) y las validaciones literales de `crear_trabajo` en `0008_ajustes_finales.sql` (versión vigente; antes `0007_ruta.sql` y `0005_recepcion.sql`), `src/dominio/tipos.ts` (`Modalidad`), `src/dominio/trabajo.ts` y `src/dominio/ruta.ts` (reglas de qué entra a la ruta), `src/pantallas/recepcion/Recepcion.tsx` (`MODALIDADES`), `src/pantallas/ruta/comun.tsx` (etiquetas) y `RutaManana.tsx`. Pruebas en `trabajo.test.ts`, `ruta.test.ts`, `Recepcion.test.tsx`, `ruta.test.sql`.
 - **Agregar una pantalla.** Tipo `Pantalla` (`tipos.ts`), permisos (`permisos.ts`), entrada en `PANTALLAS` y renderizado en `App.tsx`, componente en `src/pantallas/<nombre>/`. Controles que no deben imprimirse llevan `print:hidden`.
 - **Cambiar el ícono o los colores de la PWA.** Editar `public/icono.svg` y correr `npm run iconos`; el manifest está en `vite.config.ts` (`VitePWA`), los colores `#0f766e` (tema) y `#ffffff` (fondo).
