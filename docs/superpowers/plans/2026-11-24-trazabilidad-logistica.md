@@ -201,3 +201,83 @@ Cambio de requisito confirmado por el dueño (hoja real de 10 recorridos: lunes 
 - **Cobertura del spec:** metas de §2 → Tasks 2-8 (lotes y líneas: 4; avance: 2; modalidades: 4 y 7; hoja de ruta: 7; reporte: 8; etapas editables: 3 y 1); permisos §5.4 → Task 1; maestros importables → Task 3; fases §5.5 → orden de tareas. Fuera de alcance (Excel, WhatsApp, firma, offline) no tiene tareas, según el spec.
 - **Consistencia de tipos:** `Movimiento`, `Etapa`, `FilaListo` y `Repo.*` se definen una vez (Tasks 1, 2 y 5) y se usan con los mismos nombres después.
 - **Proporción:** el plan decide interfaces y pruebas; los cuerpos de las funciones los escribe quien implementa.
+
+---
+
+### Task 11a: Detalle técnico por línea
+
+Cambio de requisito confirmado por el dueño: (a) el chofer **solo registra tipo y tamaño** de la herramienta al retirar (nombre del producto del catálogo); el ángulo, melladura, dientes y otros detalles los define el taller; (b) el catálogo ya codifica tipo y tamaño en el nombre del producto (p. ej. "CUCHILLO GUILLOTINA 115", "DISCO 1/2\"").
+
+**Files:**
+- Create: `supabase/migrations/0010_detalle_lineas.sql`, `supabase/tests/detalle_lineas.test.sql`
+- Modify: `src/dominio/tipos.ts`, `src/data/repo.ts`, `src/data/memoryRepo.ts`, `src/data/supabaseRepo.ts`, `src/pantallas/recepcion/Recepcion.tsx`, `src/pantallas/taller/Taller.tsx`, `src/pantallas/taller/Taller.test.tsx`
+
+**Interfaces:**
+- Consumes: `Linea`, `Producto`, `Area`, `Rol`, `mover_unidades` (Tasks 1–2), perfiles y RLS existente.
+- Produces:
+  - `Producto` gana `tipo?: 'herramienta' | 'servicio'` (nullable — productos sin clasificar se aceptan en ambas áreas).
+  - `Linea` gana `servicioId?: string` (FK a productos donde tipo='servicio', solo encuadernación) y `detalleTaller?: string` (texto libre, cualquier área).
+  - `Repo.actualizarDetalleLinea(lineaId: string, cambios: {servicioId?: string | null; detalleTaller?: string | null}): Promise<void>` (RPC SQL; solo gestión y operario del área del trabajo pueden llamarla).
+  - `Repo.cargarTodo()` devuelve lineas con los nuevos campos.
+
+- [ ] **Step 1: Escribir `detalle_lineas.test.sql`:** `actualizar_detalle_linea` → operario_afilado puede actualizar detalle en un trabajo de afilado y no puede en uno de encuadernación; operario_encuadernacion al revés; gestión puede en ambos; chofer no puede; anon no puede; resultado en la fila es el valor pasado.
+- [ ] **Step 2: Escribir la prueba de integración en `Taller.test.tsx`:** al expandir una línea y cambiar el detalle, se llama `actualizarDetalleLinea` con el valor nuevo; el textarea está deshabilitado para chofer y operario de otra área.
+- [ ] **Step 3: Ejecutar** `npx vitest run src/pantallas/taller/Taller.test.tsx` → FALLA (función no existe).
+- [ ] **Step 4: Escribir `0010_detalle_lineas.sql`:**
+  - `ALTER TABLE productos ADD COLUMN tipo text CHECK (tipo IN ('herramienta','servicio'))` — nullable (NULL = sin clasificar; válido para ambas áreas).
+  - `ALTER TABLE lineas ADD COLUMN servicio_id uuid REFERENCES productos(id) ON DELETE SET NULL` — nullable.
+  - `ALTER TABLE lineas ADD COLUMN detalle_taller text` — nullable.
+  - Función `actualizar_detalle_linea(p_linea_id uuid, p_detalle_taller text, p_servicio_id uuid)` SECURITY DEFINER: comprueba que el caller sea gestión (`es_gestion()`) o un operario cuya área coincide con `trabajos.area` de la línea; actualiza ambos campos; lanza excepción si no tiene permiso. `GRANT EXECUTE TO authenticated`.
+  - Ejecutar `su postgres -c "bash scripts/sql-local/correr_pruebas.sh"` → pasa el nuevo test.
+- [ ] **Step 5: Actualizar `tipos.ts`** — agregar `tipo?: 'herramienta' | 'servicio'` a `Producto`; agregar `servicioId?: string; detalleTaller?: string` a `Linea`.
+- [ ] **Step 6: Implementar `Repo.actualizarDetalleLinea`** en `repo.ts` (firma), `memoryRepo.ts` (actualiza en memoria) y `supabaseRepo.ts` (llama al RPC `actualizar_detalle_linea`).
+- [ ] **Step 7: Actualizar `Recepcion.tsx`:** al seleccionar área, filtrar las sugerencias de producto: área `afilado` → `tipo === 'herramienta' || tipo == null`; área `encuadernacion` → `tipo === 'servicio' || tipo == null`. El filtro es solo en las sugerencias; el campo sigue siendo texto libre.
+- [ ] **Step 8: Actualizar `Taller.tsx`:** en el panel de detalle de cada línea agregar un textarea `Detalle del taller` (placeholder "Ángulo, melladura, observaciones…") y, solo en área encuadernación, un select `Servicio` (lista de productos con tipo='servicio' del área). Ambos deshabilitados si el rol es `chofer` o si el operario es de otra área; al cambiar llama `actualizarDetalleLinea`.
+- [ ] **Step 9: Ejecutar** `npx vitest run` → 473+ pasan; `npx tsc --noEmit` sin errores.
+- [ ] **Step 10: Commit** `feat: detalle técnico por línea (servicio y detalle_taller)`.
+
+---
+
+### Task 11b: Horas planificadas de entrega (encuadernación)
+
+Solo área encuadernación. Gestión registra las horas planificadas (una global por trabajo y/o varias por entrega parcial); se muestran en Qué hay listo, Hoja de ruta y Reporte.
+
+**Files:**
+- Create: `supabase/migrations/0011_entregas_planificadas.sql`, `supabase/tests/entregas_planificadas.test.sql`
+- Modify: `src/dominio/tipos.ts`, `src/dominio/listo.ts`, `src/dominio/listo.test.ts`, `src/dominio/ruta.ts`, `src/data/repo.ts`, `src/data/memoryRepo.ts`, `src/data/supabaseRepo.ts`, `src/pantallas/taller/Taller.tsx`, `src/pantallas/taller/Taller.test.tsx`, `src/pantallas/listo/Listo.tsx`, `src/pantallas/ruta/HojaChofer.tsx`, `src/pantallas/reporte/Reporte.tsx`, `src/pantallas/reporte/Reporte.test.tsx`
+
+**Interfaces:**
+- Consumes: `Trabajo`, `FilaListo`, `Parada`, `DatosOperacion`, `cargarTodo` (Tasks 1, 5, 7, 11a).
+- Produces:
+  - Nuevo tipo `EntregaPlanificada { id: string; trabajoId: string; hora: string; cantidad: number; nota?: string }`.
+  - `Trabajo` gana `entregaPlanificada?: string` (ISO timestamp; solo encuadernación; nullable).
+  - `DatosOperacion` gana `entregasPlanificadas: EntregaPlanificada[]`.
+  - `FilaListo` gana `entregaPlanificada?: string | null` (la `entregaPlanificada` del trabajo) y `proximaEntregaPlanificada?: EntregaPlanificada | null` (primera futura en la lista de planificadas del trabajo; `null` si no hay).
+  - `Parada` gana `entregasPlanificadas: EntregaPlanificada[]` (vacío si afilado o si no hay).
+  - `Repo.guardarEntregaPlanificada(trabajoId, hora, cantidad, nota?): Promise<EntregaPlanificada>`
+  - `Repo.actualizarEntregaPlanificada(id, hora, cantidad, nota?): Promise<EntregaPlanificada>`
+  - `Repo.eliminarEntregaPlanificada(id): Promise<void>`
+  - `Repo.actualizarEntregaPlanificadaTrabajo(trabajoId, planificada: string | null): Promise<void>` (actualiza `trabajos.entrega_planificada`; solo gestión).
+  - `Repo.cargarTodo()` retorna también `entregasPlanificadas`.
+
+- [ ] **Step 1: Escribir `entregas_planificadas.test.sql`:** gestión puede INSERT/UPDATE/DELETE en `entregas_planificadas`; operario, chofer y anon no pueden INSERT; todos los perfiles pueden SELECT; `cantidad` ≤ 0 lanza error de check; FK a `trabajos` con ON DELETE CASCADE.
+- [ ] **Step 2: Escribir nuevas aserciones en `listo.test.ts`:** dado un trabajo de encuadernación con `entregaPlanificada='2026-11-25T14:00:00Z'` y dos `EntregaPlanificada` (una pasada, una futura), `resumenListo` devuelve `entregaPlanificada='2026-11-25T14:00:00Z'` y `proximaEntregaPlanificada` apuntando a la futura; para un trabajo de afilado ambas son `null`/`undefined`.
+- [ ] **Step 3: Ejecutar** `npx vitest run src/dominio/listo.test.ts` → FALLA.
+- [ ] **Step 4: Escribir `0011_entregas_planificadas.sql`:**
+  - `ALTER TABLE trabajos ADD COLUMN entrega_planificada timestamptz` — nullable.
+  - Tabla `entregas_planificadas(id uuid PK DEFAULT gen_random_uuid(), trabajo_id uuid NOT NULL REFERENCES trabajos(id) ON DELETE CASCADE, hora timestamptz NOT NULL, cantidad int NOT NULL CHECK(cantidad > 0), nota text, creado_por uuid NOT NULL REFERENCES perfiles(usuario_id), creado_en timestamptz NOT NULL DEFAULT now())`.
+  - RLS: SELECT = `is_authenticated()`; INSERT/UPDATE/DELETE = `es_gestion()`.
+  - Realtime: agregar `entregas_planificadas` a la publication (igual que `movimientos`).
+  - Ejecutar `su postgres -c "bash scripts/sql-local/correr_pruebas.sh"` → pasa.
+- [ ] **Step 5: Actualizar `tipos.ts`** — añadir `EntregaPlanificada`; añadir `entregaPlanificada?: string` a `Trabajo`; añadir `entregasPlanificadas: EntregaPlanificada[]` a `DatosOperacion`; añadir `entregasPlanificadas: EntregaPlanificada[]` a `Parada`.
+- [ ] **Step 6: Actualizar `listo.ts`** — añadir `entregaPlanificada?` y `proximaEntregaPlanificada?` a `FilaListo`; en `resumenListo` calcular `proximaEntregaPlanificada` como la primera `EntregaPlanificada` del trabajo cuya `hora > hoy` (comparar como string ISO; empatar por `hora` asc).
+- [ ] **Step 7: Ejecutar** `npx vitest run src/dominio/listo.test.ts` → PASA.
+- [ ] **Step 8: Implementar nuevos métodos en `repo.ts`, `memoryRepo.ts` y `supabaseRepo.ts`** (guardar, actualizar, eliminar entregas planificadas; actualizar `entregaPlanificada` del trabajo; `cargarTodo` incluye `entregasPlanificadas`).
+- [ ] **Step 9: Actualizar `ruta.ts`** — en `armarRuta`, poblar `parada.entregasPlanificadas` con las planificadas del trabajo de encuadernación de cada parada (vacío si es afilado).
+- [ ] **Step 10: Actualizar `Taller.tsx`** — en el panel de trabajos de **encuadernación** agregar sección "Entregas planificadas": lista de filas (hora, cantidad, nota), botón "Agregar" (abre formulario con hora datetime-local, cantidad, nota), edición y borrado inline; campo "Hora global del trabajo" (`entregaPlanificada`). Solo visible/editable para gestión. Escribir prueba en `Taller.test.tsx` que crea y elimina una planificada con `memoryRepo`.
+- [ ] **Step 11: Actualizar `Listo.tsx`** — para trabajos de encuadernación, mostrar `proximaEntregaPlanificada` (si existe) como "Próx. entrega: HH:mm" junto a "Listo desde"; si no hay, mostrar `entregaPlanificada` del trabajo como "Planificado: fecha".
+- [ ] **Step 12: Actualizar `HojaChofer.tsx`** — en las tarjetas de encuadernación de `pasarARetirar`/`paradas`, mostrar las `entregasPlanificadas` como chips "HH:mm · N unid.".
+- [ ] **Step 13: Actualizar `Reporte.tsx` y `Reporte.test.tsx`** — en la sección "Por entregar" de encuadernación, mostrar `entregaPlanificada` del trabajo (si existe) como "Planificado: fecha hora".
+- [ ] **Step 14: Ejecutar** `npx vitest run` → 473+ pasan; `npx tsc --noEmit` sin errores.
+- [ ] **Step 15: Commit** `feat: horas planificadas de entrega en encuadernación`.
+
