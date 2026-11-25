@@ -5,6 +5,7 @@ import Taller from './Taller'
 import { crearMemoryRepo } from '../../data/memoryRepo'
 import type { Repo } from '../../data/repo'
 import { ErrorEntrega } from '../../dominio/entrega'
+import { horaSantiago } from '../../dominio/reporte'
 import type { Etapa, Movimiento, Rol, Trabajo } from '../../dominio/tipos'
 
 const etapas: Etapa[] = [
@@ -327,8 +328,13 @@ describe('Taller', () => {
       await userEvent.clear(inputCant)
       await userEvent.type(inputCant, '50')
       await userEvent.click(within(fila).getByRole('button', { name: /Guardar/i }))
-      await waitFor(() => expect(espia).toHaveBeenCalledWith('t2', expect.any(String), 50, undefined))
-      // La nueva entrada aparece en la fila
+      await waitFor(() => {
+        expect(espia).toHaveBeenCalledOnce()
+        const [, hora] = espia.mock.calls[0] as [string, string, number, string | undefined]
+        // La hora almacenada debe representar las 14:00 en Santiago (corrección de zona horaria)
+        expect(horaSantiago(hora)).toBe('14:00')
+      })
+      // La nueva entrada aparece en la fila mostrando la hora en Santiago (14:00)
       await waitFor(() => expect(within(fila).getByText(/14:00/)).toBeInTheDocument())
     })
 
@@ -340,16 +346,50 @@ describe('Taller', () => {
         trabajos: [trab('t2', 12, 'c2', 'encuadernacion')],
         lineas: [{ id: 'l2', trabajoId: 't2', producto: 'Libro', cantidad: 3 }],
         movimientos: [mov('m3', 'l2', 3, null, 'b1')],
-        entregasPlanificadas: [{ id: 'ep1', trabajoId: 't2', hora: '2026-11-27T14:00:00Z', cantidad: 50 }],
+        // Hora correcta: 14:00 Santiago (UTC-3) = 17:00 UTC
+        entregasPlanificadas: [{ id: 'ep1', trabajoId: 't2', hora: '2026-11-27T17:00:00Z', cantidad: 50 }],
       })
       render(<Taller repo={base} usuario={usuario} />)
       const fila = await abrir('Libros del Norte', 'Libro')
-      // La entrega planificada aparece
       expect(within(fila).getByText(/14:00/)).toBeInTheDocument()
-      // Clic en eliminar
       await userEvent.click(within(fila).getByRole('button', { name: /Eliminar/i }))
-      // Desaparece
       await waitFor(() => expect(within(fila).queryByText(/14:00/)).not.toBeInTheDocument())
+    })
+
+    it('gestión puede editar una entrega planificada', async () => {
+      const espia = vi.fn()
+      const usuario = { id: 'u', nombre: 'Ana', rol: 'jefe_taller' as const }
+      const base = crearMemoryRepo({
+        usuario, etapas,
+        clientes: [{ id: 'c2', nombre: 'Libros del Norte', rut: '2-7' }],
+        trabajos: [trab('t2', 12, 'c2', 'encuadernacion')],
+        lineas: [{ id: 'l2', trabajoId: 't2', producto: 'Libro', cantidad: 3 }],
+        movimientos: [mov('m3', 'l2', 3, null, 'b1')],
+        entregasPlanificadas: [{ id: 'ep1', trabajoId: 't2', hora: '2026-11-27T17:00:00Z', cantidad: 50 }],
+      })
+      const r = { ...base, actualizarEntregaPlanificada: (...a: Parameters<Repo['actualizarEntregaPlanificada']>) => (espia(...a), base.actualizarEntregaPlanificada(...a)) }
+      render(<Taller repo={r} usuario={usuario} />)
+      const fila = await abrir('Libros del Norte', 'Libro')
+      await userEvent.click(within(fila).getByRole('button', { name: /Editar/i }))
+      const inputHora = within(fila).getByLabelText(/Hora de entrega/i)
+      await userEvent.clear(inputHora)
+      await userEvent.type(inputHora, '2026-11-28T16:00')
+      await userEvent.click(within(fila).getByRole('button', { name: /Guardar/i }))
+      await waitFor(() => expect(espia).toHaveBeenCalledWith('ep1', expect.objectContaining({ hora: expect.any(String) })))
+    })
+
+    it('gestión puede establecer la hora global de entrega del trabajo', async () => {
+      const espia = vi.fn()
+      montar('jefe_taller', (r) => ({
+        ...r,
+        actualizarEntregaPlanificadaTrabajo: (...a: Parameters<Repo['actualizarEntregaPlanificadaTrabajo']>) => (espia(...a), r.actualizarEntregaPlanificadaTrabajo(...a)),
+      }))
+      const fila = await abrir('Libros del Norte', 'Libro')
+      const inputGlobal = within(fila).getByLabelText(/Hora global del trabajo/i)
+      await userEvent.clear(inputGlobal)
+      await userEvent.type(inputGlobal, '2026-11-28T10:00')
+      await userEvent.click(within(fila).getByRole('button', { name: /Establecer/i }))
+      await waitFor(() => expect(espia).toHaveBeenCalledWith('t2', expect.any(String)))
     })
   })
 

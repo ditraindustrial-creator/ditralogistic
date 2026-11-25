@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { lineasEntregables } from '../../dominio/entrega'
 import { diaLocal, diaSemana } from '../../dominio/fechas'
+import { horaSantiago } from '../../dominio/reporte'
 import { resumenListo } from '../../dominio/listo'
 import { armarRuta, ErrorVisita, fechaValida, ordenarParadas, recorridoDelChofer, type Confirmacion, type Parada } from '../../dominio/ruta'
 import type { Cliente, UsuarioActual } from '../../dominio/tipos'
@@ -103,7 +104,7 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
                       <div className="flex flex-wrap gap-1">
                         {eps.map((ep) => (
                           <span key={ep.id} className="rounded bg-teal-100 px-2 py-1 text-sm text-teal-800">
-                            {ep.hora.substring(11, 16)} · {ep.cantidad} unid.
+                            {horaSantiago(ep.hora)} · {ep.cantidad} unid.
                           </span>
                         ))}
                       </div>

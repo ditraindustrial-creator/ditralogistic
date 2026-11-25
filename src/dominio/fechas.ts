@@ -32,6 +32,20 @@ export function siguienteDiaHabil(fecha: string): string {
   return `${s.getUTCFullYear()}-${dos(s.getUTCMonth() + 1)}-${dos(s.getUTCDate())}`
 }
 
+const fmtOffset = new Intl.DateTimeFormat('en', { timeZone: ZONA, timeZoneName: 'shortOffset' })
+
+/**
+ * Convierte un string de fecha-hora local de Santiago (`"YYYY-MM-DDTHH:mm"`) a ISO UTC.
+ * Usa la zona horaria America/Santiago para manejar el horario de verano.
+ */
+export function santiagLocalToIso(localStr: string): string {
+  const utcRef = new Date(`${localStr}:00Z`)
+  const tz = fmtOffset.formatToParts(utcRef).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT-3'
+  const m = tz.match(/GMT([+-])(\d+)/)
+  const offsetHours = m ? (m[1] === '+' ? 1 : -1) * parseInt(m[2]) : -3
+  return new Date(utcRef.getTime() - offsetHours * 3600000).toISOString()
+}
+
 /**
  * Milisegundos desde `ahora` hasta que cambia el día calendario en Santiago (la próxima medianoche
  * local, o la hora en que empieza el día si el cambio de hora se salta la medianoche). Sirve para

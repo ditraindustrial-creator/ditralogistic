@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { ErrorMovimiento, validarMovimiento } from '../../dominio/avance'
+import { santiagLocalToIso } from '../../dominio/fechas'
 import { esGestion, puedeEntregar, puedeVer } from '../../dominio/permisos'
 import type { LineaEntregable } from '../../dominio/entrega'
+import { horaSantiago } from '../../dominio/reporte'
 import { areasDelRol, destinoPorDefecto, lineasEnCurso, origenPorDefecto, reconciliarSeleccion, type LineaTaller } from '../../dominio/taller'
-import type { Area, Producto, UsuarioActual } from '../../dominio/tipos'
+import type { Area, EntregaPlanificada, Producto, UsuarioActual } from '../../dominio/tipos'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import Entrega from '../entrega/Entrega'
 
@@ -62,6 +64,8 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   const [epFormCant, setEpFormCant] = useState('1')
   const [epFormNota, setEpFormNota] = useState('')
   const [guardandoEp, setGuardandoEp] = useState(false)
+  const [epEditandoId, setEpEditandoId] = useState<string | null>(null)
+  const [globalEpHora, setGlobalEpHora] = useState<Record<string, string>>({})
 
   useEffect(() => {
     repo.listarProductos().then(
@@ -193,8 +197,13 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
     if (!epFormHora || !epFormCant) return
     setGuardandoEp(true)
     try {
-      const hora = `${epFormHora}:00Z`
-      await repo.guardarEntregaPlanificada(trabajoId, hora, Number(epFormCant), epFormNota || undefined)
+      const hora = santiagLocalToIso(epFormHora)
+      if (epEditandoId) {
+        await repo.actualizarEntregaPlanificada(epEditandoId, { hora, cantidad: Number(epFormCant), nota: epFormNota || undefined })
+        setEpEditandoId(null)
+      } else {
+        await repo.guardarEntregaPlanificada(trabajoId, hora, Number(epFormCant), epFormNota || undefined)
+      }
       setEpFormLineaId(null)
       setEpFormHora('')
       setEpFormCant('1')
@@ -205,8 +214,28 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
     }
   }
 
+  function abrirEditar(ep: EntregaPlanificada, lineaId: string) {
+    setEpEditandoId(ep.id)
+    setEpFormLineaId(lineaId)
+    const dtf = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    })
+    const p = Object.fromEntries(dtf.formatToParts(new Date(ep.hora)).map((x) => [x.type, x.value]))
+    setEpFormHora(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`)
+    setEpFormCant(String(ep.cantidad))
+    setEpFormNota(ep.nota ?? '')
+  }
+
   async function eliminarEp(id: string) {
     await repo.eliminarEntregaPlanificada(id)
+    await recargar()
+  }
+
+  async function guardarGlobalEp(trabajoId: string) {
+    const local = globalEpHora[trabajoId]
+    if (!local) return
+    await repo.actualizarEntregaPlanificadaTrabajo(trabajoId, santiagLocalToIso(local))
     await recargar()
   }
 
@@ -402,13 +431,19 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                               <span className="text-lg font-semibold">Entregas planificadas</span>
                               {(datos?.entregasPlanificadas ?? []).filter((ep) => ep.trabajoId === l.trabajoId).map((ep) => (
                                 <div key={ep.id} className="flex items-center gap-2 text-base">
-                                  <span>{ep.hora.substring(11, 16)}</span>
+                                  <span>{horaSantiago(ep.hora)}</span>
                                   <span>· {ep.cantidad} unid.</span>
                                   {ep.nota && <span className="text-slate-600">{ep.nota}</span>}
                                   <button
                                     type="button"
+                                    aria-label="Editar"
+                                    className="rounded border px-2 py-1 text-sm"
+                                    onClick={() => abrirEditar(ep, l.lineaId)}
+                                  >Editar</button>
+                                  <button
+                                    type="button"
                                     aria-label="Eliminar"
-                                    className="ml-auto rounded border px-2 py-1 text-sm text-red-700"
+                                    className="rounded border px-2 py-1 text-sm text-red-700"
                                     onClick={() => void eliminarEp(ep.id)}
                                   >✕</button>
                                 </div>
@@ -464,6 +499,24 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                                   onClick={() => { setEpFormLineaId(l.lineaId); setEpFormHora(''); setEpFormCant('1'); setEpFormNota('') }}
                                 >Agregar</button>
                               )}
+                            </div>
+                          )}
+                          {l.area === 'encuadernacion' && esGestion(usuario.rol) && (
+                            <div className="flex flex-col gap-2 border-t pt-3">
+                              <label className="flex flex-col gap-1 text-base font-semibold">
+                                Hora global del trabajo
+                                <input
+                                  type="datetime-local"
+                                  className="rounded border p-2 font-normal"
+                                  value={globalEpHora[l.trabajoId] ?? ''}
+                                  onChange={(e) => setGlobalEpHora((prev) => ({ ...prev, [l.trabajoId]: e.target.value }))}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                className="self-start rounded border-2 border-teal-700 px-4 py-2 text-base font-semibold text-teal-700"
+                                onClick={() => void guardarGlobalEp(l.trabajoId)}
+                              >Establecer</button>
                             </div>
                           )}
                           {errorDetalle[l.lineaId] && (
