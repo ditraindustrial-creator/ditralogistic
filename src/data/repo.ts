@@ -1,4 +1,4 @@
-import type { Asignacion, Cliente, Modalidad, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
+import type { Asignacion, Cliente, EntregaPlanificada, Modalidad, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
 import type { Entrega, OpcionesEntrega } from '../dominio/entrega'
 import type { DatosTrabajoNuevo } from '../dominio/trabajo'
 import type { DatosOperacion } from '../dominio/listo'
@@ -96,4 +96,14 @@ export interface Repo {
    * Solo gestión y el operario del área del trabajo. Lanza Error en español si no tiene permiso.
    */
   actualizarDetalleLinea(lineaId: string, cambios: { servicioId?: string | null; detalleTaller?: string | null }): Promise<void>
+
+  // ---- Entregas planificadas (Task 11b) ----
+  /** Crea una entrega parcial planificada para un trabajo. Solo gestión. */
+  guardarEntregaPlanificada(trabajoId: string, hora: string, cantidad: number, nota?: string): Promise<EntregaPlanificada>
+  /** Actualiza la hora, cantidad o nota de una entrega planificada. Solo gestión. */
+  actualizarEntregaPlanificada(id: string, cambios: { hora?: string; cantidad?: number; nota?: string | null }): Promise<void>
+  /** Elimina una entrega planificada. Solo gestión. */
+  eliminarEntregaPlanificada(id: string): Promise<void>
+  /** Actualiza la hora global de entrega planificada del trabajo. Solo gestión. */
+  actualizarEntregaPlanificadaTrabajo(trabajoId: string, hora: string | null): Promise<void>
 }

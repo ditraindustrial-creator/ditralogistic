@@ -61,6 +61,17 @@ export interface Trabajo {
   transporte?: string
   urgente: boolean
   notas?: string
+  /** ISO timestamp de la hora global de entrega planificada (solo encuadernación). */
+  entregaPlanificada?: string
+}
+
+/** Una entrega parcial planificada para un trabajo de encuadernación. */
+export interface EntregaPlanificada {
+  id: string
+  trabajoId: string
+  hora: string
+  cantidad: number
+  nota?: string
 }
 
 export interface Cliente {

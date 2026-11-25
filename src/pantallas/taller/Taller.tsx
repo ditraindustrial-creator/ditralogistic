@@ -57,6 +57,11 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   const [productos, setProductos] = useState<Producto[]>([])
   const [errorDetalle, setErrorDetalle] = useState<Record<string, string>>({})
   const [guardandoDetalle, setGuardandoDetalle] = useState<string | null>(null)
+  const [epFormLineaId, setEpFormLineaId] = useState<string | null>(null)
+  const [epFormHora, setEpFormHora] = useState('')
+  const [epFormCant, setEpFormCant] = useState('1')
+  const [epFormNota, setEpFormNota] = useState('')
+  const [guardandoEp, setGuardandoEp] = useState(false)
 
   useEffect(() => {
     repo.listarProductos().then(
@@ -182,6 +187,27 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
       (usuario.rol === 'operario_afilado' && area === 'afilado') ||
       (usuario.rol === 'operario_encuadernacion' && area === 'encuadernacion')
     )
+  }
+
+  async function guardarEp(trabajoId: string) {
+    if (!epFormHora || !epFormCant) return
+    setGuardandoEp(true)
+    try {
+      const hora = `${epFormHora}:00Z`
+      await repo.guardarEntregaPlanificada(trabajoId, hora, Number(epFormCant), epFormNota || undefined)
+      setEpFormLineaId(null)
+      setEpFormHora('')
+      setEpFormCant('1')
+      setEpFormNota('')
+      await recargar()
+    } finally {
+      setGuardandoEp(false)
+    }
+  }
+
+  async function eliminarEp(id: string) {
+    await repo.eliminarEntregaPlanificada(id)
+    await recargar()
   }
 
   async function guardarDetalle(lineaId: string, cambios: { detalleTaller?: string | null } | { servicioId?: string | null }) {
@@ -370,6 +396,75 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                                   ))}
                               </select>
                             </label>
+                          )}
+                          {l.area === 'encuadernacion' && esGestion(usuario.rol) && (
+                            <div className="flex flex-col gap-2 border-t pt-3">
+                              <span className="text-lg font-semibold">Entregas planificadas</span>
+                              {(datos?.entregasPlanificadas ?? []).filter((ep) => ep.trabajoId === l.trabajoId).map((ep) => (
+                                <div key={ep.id} className="flex items-center gap-2 text-base">
+                                  <span>{ep.hora.substring(11, 16)}</span>
+                                  <span>· {ep.cantidad} unid.</span>
+                                  {ep.nota && <span className="text-slate-600">{ep.nota}</span>}
+                                  <button
+                                    type="button"
+                                    aria-label="Eliminar"
+                                    className="ml-auto rounded border px-2 py-1 text-sm text-red-700"
+                                    onClick={() => void eliminarEp(ep.id)}
+                                  >✕</button>
+                                </div>
+                              ))}
+                              {epFormLineaId === l.lineaId ? (
+                                <div className="flex flex-col gap-2 rounded border p-3">
+                                  <label className="flex flex-col gap-1 text-base font-semibold">
+                                    Hora de entrega
+                                    <input
+                                      type="datetime-local"
+                                      className="rounded border p-2 font-normal"
+                                      value={epFormHora}
+                                      onChange={(e) => setEpFormHora(e.target.value)}
+                                    />
+                                  </label>
+                                  <label className="flex flex-col gap-1 text-base font-semibold">
+                                    Cantidad planificada
+                                    <input
+                                      type="number"
+                                      className="rounded border p-2 font-normal"
+                                      min={1}
+                                      value={epFormCant}
+                                      onChange={(e) => setEpFormCant(e.target.value)}
+                                    />
+                                  </label>
+                                  <label className="flex flex-col gap-1 text-base font-semibold">
+                                    Nota
+                                    <input
+                                      type="text"
+                                      className="rounded border p-2 font-normal"
+                                      value={epFormNota}
+                                      onChange={(e) => setEpFormNota(e.target.value)}
+                                    />
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={guardandoEp}
+                                      className={botonGrande}
+                                      onClick={() => void guardarEp(l.trabajoId)}
+                                    >Guardar</button>
+                                    <button
+                                      type="button"
+                                      className="min-h-14 rounded border-2 border-slate-300 px-5 py-3 text-xl font-semibold"
+                                      onClick={() => setEpFormLineaId(null)}
+                                    >Cancelar</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="self-start rounded border-2 border-teal-700 px-4 py-2 text-base font-semibold text-teal-700"
+                                  onClick={() => { setEpFormLineaId(l.lineaId); setEpFormHora(''); setEpFormCant('1'); setEpFormNota('') }}
+                                >Agregar</button>
+                              )}
+                            </div>
                           )}
                           {errorDetalle[l.lineaId] && (
                             <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-700">{errorDetalle[l.lineaId]}</p>

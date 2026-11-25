@@ -1,5 +1,5 @@
 import type { FilaListo } from './listo'
-import type { Asignacion, Cliente, Recorrido, Visita } from './tipos'
+import type { Asignacion, Cliente, EntregaPlanificada, Recorrido, Visita } from './tipos'
 import { diaSemana } from './fechas'
 
 export type Confirmacion = Visita['confirmada']
@@ -20,6 +20,8 @@ export interface Parada {
   orden: number
   /** Trabajos con unidades listas que salen por ruta propia. */
   entregar: FilaListo[]
+  /** Entregas parciales planificadas del trabajo seleccionado (encuadernación). */
+  entregasPlanificadas: EntregaPlanificada[]
   visitaId?: string
   confirmada: Confirmacion
   requiereConfirmacion: boolean
@@ -102,10 +104,17 @@ export function armarRuta(
   recorridos: Recorrido[],
   asignaciones: Asignacion[],
   visitas: Visita[],
+  entregasPlanificadas: EntregaPlanificada[] = [],
 ): RutaDelDia {
   const dia = diaSemana(fecha)
   const clientePorId = new Map(clientes.map((c) => [c.id, c]))
   const recorridoPorId = new Map(recorridos.map((r) => [r.id, r]))
+  const epPorTrabajo = new Map<string, EntregaPlanificada[]>()
+  for (const ep of entregasPlanificadas) {
+    const lista = epPorTrabajo.get(ep.trabajoId) ?? []
+    lista.push(ep)
+    epPorTrabajo.set(ep.trabajoId, lista)
+  }
   const visitaPorCliente = new Map<string, Visita>()
   for (const v of visitas) if (v.fecha === fecha) visitaPorCliente.set(v.clienteId, v)
 
@@ -143,6 +152,7 @@ export function armarRuta(
       fija: asignada?.a.fija ?? false,
       orden: asignada?.a.orden ?? 0,
       entregar: [...(porRutaDe.get(clienteId) ?? [])].sort((a, b) => a.numero - b.numero),
+      entregasPlanificadas: (porRutaDe.get(clienteId) ?? []).flatMap((f) => epPorTrabajo.get(f.trabajoId) ?? []),
       confirmada: visita?.confirmada ?? 'sin_respuesta',
       requiereConfirmacion: (asignada?.r.lejano ?? false) || (visita?.requiereConfirmacion ?? false),
       solicitada: visita?.solicitada ?? false,

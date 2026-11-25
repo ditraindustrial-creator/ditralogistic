@@ -1,4 +1,4 @@
-import type { Area, Asignacion, Cliente, Etapa, Linea, Modalidad, Movimiento, Recorrido, Trabajo } from './tipos'
+import type { Area, Asignacion, Cliente, EntregaPlanificada, Etapa, Linea, Modalidad, Movimiento, Recorrido, Trabajo } from './tipos'
 import { diaSemana } from './fechas'
 
 /** Todo lo que hace falta para calcular el estado de la operación (entrada de `resumenListo`). */
@@ -11,6 +11,8 @@ export interface DatosOperacion {
   recorridos: Recorrido[]
   /** Qué clientes van en qué recorridos (cliente_recorridos); un cliente puede estar en varios. */
   asignaciones: Asignacion[]
+  /** Entregas parciales planificadas (tabla entregas_planificadas). */
+  entregasPlanificadas: EntregaPlanificada[]
 }
 
 /** Un recorrido del cliente (para mostrar "Rutas: Lun · Mié · Vie"). */
@@ -46,6 +48,10 @@ export interface FilaListo {
   rutas: RutaCliente[]
   /** Próximo día de ruta desde `hoy` (hoy cuenta); null si el cliente no tiene recorrido. */
   proximaRuta: ProximaRuta | null
+  /** Hora global planificada del trabajo (solo encuadernación; ISO string). */
+  entregaPlanificada?: string
+  /** Primera entrega parcial planificada con hora > hoy (ISO); undefined si no hay ninguna. */
+  proximaEntregaPlanificada?: EntregaPlanificada
 }
 
 /** `fecha` + `n` días, en días calendario (sin horas: no le afecta el cambio de hora). */
@@ -112,12 +118,23 @@ export function resumenListo(datos: DatosOperacion, hoy: string): FilaListo[] {
     if (origen?.esFinal) a.finales -= m.cantidad
   }
 
+  // Entregas planificadas: agrupa por trabajoId, ordena por hora.
+  const epPorTrabajo = new Map<string, EntregaPlanificada[]>()
+  for (const ep of datos.entregasPlanificadas) {
+    const lista = epPorTrabajo.get(ep.trabajoId) ?? []
+    lista.push(ep)
+    epPorTrabajo.set(ep.trabajoId, lista)
+  }
+
   const filas: FilaListo[] = []
   for (const t of datos.trabajos) {
     const a = acum.get(t.id)!
     if (a.total > 0 && a.finales >= a.total) continue
     const cliente = clientePorId.get(t.clienteId)
     const info = infoRutas.get(t.clienteId)
+    // Primera entrega parcial planificada futura (hora > hoy como string ISO).
+    const eps = epPorTrabajo.get(t.id) ?? []
+    const proximaEp = eps.filter((ep) => ep.hora > hoy).sort((x, y) => x.hora.localeCompare(y.hora))[0]
     filas.push({
       trabajoId: t.id,
       numero: t.numero,
@@ -132,6 +149,8 @@ export function resumenListo(datos: DatosOperacion, hoy: string): FilaListo[] {
       listoDesde: a.listas > 0 ? a.listoDesde : null,
       rutas: info?.rutas ?? [],
       proximaRuta: info?.proximaRuta ?? null,
+      ...(t.entregaPlanificada !== undefined ? { entregaPlanificada: t.entregaPlanificada } : {}),
+      ...(proximaEp !== undefined ? { proximaEntregaPlanificada: proximaEp } : {}),
     })
   }
   return filas

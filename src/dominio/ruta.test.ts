@@ -70,7 +70,7 @@ describe('armarRuta: un martes', () => {
     ])
     expect(paradas[2]).toEqual({
       clienteId: 'c1', clienteNombre: 'Imprenta Sur', recorridoId: 'rN', recorridoNombre: 'Norte', dia: 2,
-      entregar: [f1], confirmada: 'sin_respuesta', requiereConfirmacion: false, solicitada: false, fija: true, orden: 0,
+      entregar: [f1], entregasPlanificadas: [], confirmada: 'sin_respuesta', requiereConfirmacion: false, solicitada: false, fija: true, orden: 0,
     })
   })
 

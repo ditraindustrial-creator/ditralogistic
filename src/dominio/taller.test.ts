@@ -32,6 +32,7 @@ const datos: DatosOperacion = {
   clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }],
   recorridos: [],
   asignaciones: [],
+  entregasPlanificadas: [],
   trabajos: [
     { id: 't1', numero: 1, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-21T12:00:00Z', urgente: false },
     { id: 't2', numero: 2, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-22T12:00:00Z', urgente: true },

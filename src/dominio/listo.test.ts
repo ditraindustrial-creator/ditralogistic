@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { resumenListo, type DatosOperacion } from './listo'
 import { diaLocal } from './fechas'
-import type { Asignacion, Cliente, Etapa, Linea, Movimiento, Recorrido, Trabajo } from './tipos'
+import type { Asignacion, Cliente, EntregaPlanificada, Etapa, Linea, Movimiento, Recorrido, Trabajo } from './tipos'
 
 const etapas: Etapa[] = [
   { id: 'a1', area: 'afilado', orden: 1, nombre: 'Recibido', esListo: false, esFinal: false },
@@ -28,7 +28,7 @@ const mov = (lineaId: string, cantidad: number, o: string | null, d: string, cre
 })
 
 function datos(p: Partial<DatosOperacion>): DatosOperacion {
-  return { trabajos: [], lineas: [], movimientos: [], etapas, clientes, recorridos, asignaciones, ...p }
+  return { trabajos: [], lineas: [], movimientos: [], etapas, clientes, recorridos, asignaciones, entregasPlanificadas: [], ...p }
 }
 
 const resumen = (d: DatosOperacion, hoy = HOY) => resumenListo(d, hoy)
@@ -153,7 +153,7 @@ describe('resumenListo: varios recorridos y próxima ruta (Task 10)', () => {
     { clienteId: 'c1', recorridoId: 'borrado', fija: true, orden: 0 },
   ]
   const base = (hoy: string, a: Asignacion[] = asig) =>
-    resumenListo({ trabajos: [trab('t1', 1, 'c1'), trab('t2', 2, 'c2')], lineas: [], movimientos: [], etapas, clientes, recorridos: semana, asignaciones: a }, hoy)
+    resumenListo({ trabajos: [trab('t1', 1, 'c1'), trab('t2', 2, 'c2')], lineas: [], movimientos: [], etapas, clientes, recorridos: semana, asignaciones: a, entregasPlanificadas: [] }, hoy)
 
   it('rutas: todas las asignaciones del cliente, de lunes a viernes (las de recorridos borrados no cuentan)', () => {
     expect(base('2026-11-23')[0].rutas).toEqual([
@@ -202,7 +202,7 @@ describe('resumenListo: varios recorridos y próxima ruta (Task 10)', () => {
   it('cerca de la medianoche en Santiago (y en el cambio de hora) el "hoy" que se pasa es el día de Chile', () => {
     const soloMartes: Recorrido[] = [{ id: 'mar', nombre: 'Martes', dia: 2, camioneta: 'C1', lejano: false }]
     const a: Asignacion[] = [{ clienteId: 'c1', recorridoId: 'mar', fija: true, orden: 0 }]
-    const datos = { trabajos: [trab('t1', 1, 'c1')], lineas: [], movimientos: [], etapas, clientes, recorridos: soloMartes, asignaciones: a }
+    const datos = { trabajos: [trab('t1', 1, 'c1')], lineas: [], movimientos: [], etapas, clientes, recorridos: soloMartes, asignaciones: a, entregasPlanificadas: [] }
     // Verano (UTC-3): martes 24/11 23:59 en Santiago es miércoles 02:59 UTC -> hoy sigue siendo martes.
     expect(resumenListo(datos, diaLocal('2026-11-25T02:59:00Z'))[0].proximaRuta?.fecha).toBe('2026-11-24')
     // Un minuto después ya es miércoles en Santiago: la próxima es el martes siguiente.
@@ -217,5 +217,45 @@ describe('resumenListo: varios recorridos y próxima ruta (Task 10)', () => {
 
   it('un "hoy" inválido lanza error', () => {
     expect(() => base('23-11-2026')).toThrow()
+  })
+})
+
+describe('resumenListo: entregas planificadas', () => {
+  const ep = (id: string, trabajoId: string, hora: string, cantidad: number, nota?: string): EntregaPlanificada => ({
+    id, trabajoId, hora, cantidad, ...(nota ? { nota } : {}),
+  })
+
+  it('encuadernación con entregaPlanificada y dos planificadas: muestra la próxima futura', () => {
+    const t: Trabajo = { ...trab('t1', 1, 'c1', 'encuadernacion'), entregaPlanificada: '2026-11-25T14:00:00Z' }
+    const d = datos({
+      trabajos: [t],
+      lineas: [lin('l1', 't1', 3)],
+      movimientos: [
+        mov('l1', 3, null, 'b1', '2026-11-20T12:00:00Z'),
+        mov('l1', 3, 'b1', 'b2', '2026-11-20T13:00:00Z'),
+      ],
+      entregasPlanificadas: [
+        ep('ep1', 't1', '2026-11-21T10:00:00Z', 1),         // pasada respecto a HOY=2026-11-23
+        ep('ep2', 't1', '2026-11-25T14:00:00Z', 2, 'nota'), // futura
+      ],
+    })
+    const fila = resumen(d)[0]
+    expect(fila.entregaPlanificada).toBe('2026-11-25T14:00:00Z')
+    expect(fila.proximaEntregaPlanificada).toEqual(ep('ep2', 't1', '2026-11-25T14:00:00Z', 2, 'nota'))
+  })
+
+  it('afilado: sin entregaPlanificada ni proximaEntregaPlanificada', () => {
+    const d = datos({
+      trabajos: [trab('t2', 2, 'c1', 'afilado')],
+      lineas: [lin('l2', 't2', 2)],
+      movimientos: [
+        mov('l2', 2, null, 'a1', '2026-11-20T12:00:00Z'),
+        mov('l2', 2, 'a1', 'a2', '2026-11-20T13:00:00Z'),
+      ],
+      entregasPlanificadas: [],
+    })
+    const fila = resumen(d)[0]
+    expect(fila.entregaPlanificada).toBeUndefined()
+    expect(fila.proximaEntregaPlanificada).toBeUndefined()
   })
 })

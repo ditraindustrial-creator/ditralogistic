@@ -36,7 +36,7 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
   const ruta = useMemo(
     () =>
       datos && visitas
-        ? armarRuta(fecha, resumenListo(datos, diaLocal(new Date().toISOString())), datos.clientes, datos.recorridos, datos.asignaciones, visitas)
+        ? armarRuta(fecha, resumenListo(datos, diaLocal(new Date().toISOString())), datos.clientes, datos.recorridos, datos.asignaciones, visitas, datos.entregasPlanificadas)
         : null,
     [datos, visitas, fecha],
   )
@@ -94,10 +94,20 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
             <ul className="flex flex-col gap-3">
               {p.entregar.map((f) => {
                 const t = trabajoPorId.get(f.trabajoId)
+                const eps = f.area === 'encuadernacion' ? p.entregasPlanificadas.filter((ep) => ep.trabajoId === f.trabajoId) : []
                 return (
                   <li key={f.trabajoId} className="flex flex-col gap-2 rounded bg-slate-50 p-3">
                     <span className="text-lg">N.º {f.numero} · {datos ? textoProductos(datos, f.trabajoId) : `${f.listas} listas`}</span>
                     {t?.guiaDespacho && <span className="text-slate-700">Guía: {t.guiaDespacho}</span>}
+                    {eps.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {eps.map((ep) => (
+                          <span key={ep.id} className="rounded bg-teal-100 px-2 py-1 text-sm text-teal-800">
+                            {ep.hora.substring(11, 16)} · {ep.cantidad} unid.
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </li>
                 )
               })}

@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Repo } from './repo'
-import type { Area, Asignacion, Cliente, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
+import type { Area, Asignacion, Cliente, EntregaPlanificada, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
 import {
   ErrorCliente, planificarAsignaciones, planificarClientes, planificarProductos, RUT_DUPLICADO, validarAsignacion, validarClienteNuevo,
 } from '../dominio/maestros'
@@ -67,6 +67,15 @@ interface FilaTrabajo {
   transporte: string | null
   urgente: boolean
   notas: string | null
+  entrega_planificada: string | null
+}
+
+interface FilaEntregaPlanificada {
+  id: string
+  trabajo_id: string
+  hora: string
+  cantidad: number
+  nota: string | null
 }
 
 export function filaATrabajo(f: FilaTrabajo): Trabajo {
@@ -85,7 +94,14 @@ export function filaATrabajo(f: FilaTrabajo): Trabajo {
   if (f.factura) t.factura = f.factura
   if (f.transporte) t.transporte = f.transporte
   if (f.notas) t.notas = f.notas
+  if (f.entrega_planificada) t.entregaPlanificada = f.entrega_planificada
   return t
+}
+
+export function filaAEntregaPlanificada(f: FilaEntregaPlanificada): EntregaPlanificada {
+  const ep: EntregaPlanificada = { id: f.id, trabajoId: f.trabajo_id, hora: f.hora, cantidad: f.cantidad }
+  if (f.nota) ep.nota = f.nota
+  return ep
 }
 
 const MENSAJES_PERMISO = ['Debes iniciar sesión para recibir trabajos.', 'No tienes permiso para recibir trabajos.']
@@ -175,7 +191,7 @@ interface FilaEtapa {
 }
 
 const COLUMNAS_TRABAJO =
-  'id, numero, cliente_id, area, entrada, salida, recibido_en, guia_retiro, guia_despacho, factura, transporte, urgente, notas'
+  'id, numero, cliente_id, area, entrada, salida, recibido_en, guia_retiro, guia_despacho, factura, transporte, urgente, notas, entrega_planificada'
 
 export function filaALinea(f: FilaLinea): Linea {
   const l: Linea = { id: f.id, trabajoId: f.trabajo_id, producto: f.producto, cantidad: f.cantidad }
@@ -369,7 +385,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
     async cargarTodo() {
       try {
         // Cada tabla grande se lee por páginas (PostgREST corta en 1000 filas), en paralelo.
-        const [trabajos, lineas, movimientos, etapas, clientes, recorridos, asignaciones] = await Promise.all([
+        const [trabajos, lineas, movimientos, etapas, clientes, recorridos, asignaciones, eps] = await Promise.all([
           leerTodas<FilaTrabajo>((d, h) => sb.from('trabajos').select(COLUMNAS_TRABAJO).order('id').range(d, h)),
           leerTodas<FilaLinea>((d, h) => sb.from('lineas').select('id, trabajo_id, producto, cantidad, nota, servicio_id, detalle_taller').order('id').range(d, h)),
           leerTodas<FilaMovimiento>((d, h) =>
@@ -379,6 +395,9 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
           leerTodas<FilaCliente>((d, h) => sb.from('clientes').select(COLUMNAS_CLIENTE).order('id').range(d, h)),
           leerTodas<FilaRecorrido>((d, h) => sb.from('recorridos').select(COLUMNAS_RECORRIDO).order('id').range(d, h)),
           leerAsignaciones(),
+          leerTodas<FilaEntregaPlanificada>((d, h) =>
+            sb.from('entregas_planificadas').select('id, trabajo_id, hora, cantidad, nota').order('hora').range(d, h),
+          ),
         ])
         return {
           trabajos: trabajos.map(filaATrabajo),
@@ -388,6 +407,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
           clientes: clientes.map(filaACliente),
           recorridos: recorridos.map(filaARecorrido),
           asignaciones: asignaciones.map(filaAAsignacion),
+          entregasPlanificadas: eps.map(filaAEntregaPlanificada),
         }
       } catch {
         throw new Error('No se pudo cargar la información. Revisa tu conexión.')
@@ -398,6 +418,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
       const canal = sb
         .channel(`cambios-${Math.random().toString(36).slice(2)}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'movimientos' }, () => alCambiar())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'entregas_planificadas' }, () => alCambiar())
         .subscribe((estado) => {
           if (estado === 'SUBSCRIBED') {
             alEstado?.(true)
@@ -589,6 +610,43 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
         lanzarSiError((await sb.from('productos').upsert(todos.slice(i, i + LOTE), { onConflict: 'codigo' })).error)
       }
       return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length, sinCambios: plan.sinCambios }
+    },
+    async guardarEntregaPlanificada(trabajoId, hora, cantidad, nota) {
+      const { data, error } = await sb
+        .from('entregas_planificadas')
+        .insert({ trabajo_id: trabajoId, hora, cantidad, nota: nota ?? null, creado_por: (await sb.auth.getUser()).data.user?.id })
+        .select('id, trabajo_id, hora, cantidad, nota')
+        .single()
+      if (error) {
+        if (error.code === '42501') throw new Error('No tienes permiso para gestionar entregas planificadas.')
+        throw new Error('No se pudo guardar la entrega planificada. Revisa tu conexión.')
+      }
+      return filaAEntregaPlanificada(data as FilaEntregaPlanificada)
+    },
+    async actualizarEntregaPlanificada(id, cambios) {
+      const fila: Record<string, unknown> = {}
+      if (cambios.hora !== undefined) fila.hora = cambios.hora
+      if (cambios.cantidad !== undefined) fila.cantidad = cambios.cantidad
+      if ('nota' in cambios) fila.nota = cambios.nota ?? null
+      const { error } = await sb.from('entregas_planificadas').update(fila).eq('id', id)
+      if (error) {
+        if (error.code === '42501') throw new Error('No tienes permiso para gestionar entregas planificadas.')
+        throw new Error('No se pudo actualizar la entrega planificada. Revisa tu conexión.')
+      }
+    },
+    async eliminarEntregaPlanificada(id) {
+      const { error } = await sb.from('entregas_planificadas').delete().eq('id', id)
+      if (error) {
+        if (error.code === '42501') throw new Error('No tienes permiso para gestionar entregas planificadas.')
+        throw new Error('No se pudo eliminar la entrega planificada. Revisa tu conexión.')
+      }
+    },
+    async actualizarEntregaPlanificadaTrabajo(trabajoId, hora) {
+      const { error } = await sb.from('trabajos').update({ entrega_planificada: hora }).eq('id', trabajoId)
+      if (error) {
+        if (error.code === '42501') throw new Error('No tienes permiso para modificar el trabajo.')
+        throw new Error('No se pudo actualizar la hora planificada. Revisa tu conexión.')
+      }
     },
   }
   return repo

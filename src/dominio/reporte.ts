@@ -14,6 +14,8 @@ export interface FilaReporte {
   /** Instante exacto (ISO); sirve para ordenar. */
   desde: string
   urgente: boolean
+  /** ISO timestamp de la hora global de entrega planificada (solo encuadernación). */
+  entregaPlanificada?: string
 }
 
 export interface ReporteDiario {
@@ -129,6 +131,7 @@ export function reporteDiario(fecha: string, datos: DatosOperacion): ReporteDiar
       dia: diaLocal(desde),
       desde,
       urgente: trabajo.urgente,
+      ...(trabajo.entregaPlanificada !== undefined ? { entregaPlanificada: trabajo.entregaPlanificada } : {}),
     })
 
     // Neto del día, y nunca más que la cantidad de la línea (p. ej. listo → entregado → corrección → listo).

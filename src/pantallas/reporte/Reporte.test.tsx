@@ -5,6 +5,11 @@ import Reporte from './Reporte'
 import { crearMemoryRepo } from '../../data/memoryRepo'
 import type { Etapa, Linea, Movimiento, Trabajo } from '../../dominio/tipos'
 
+const trabConPlan = (id: string, numero: number, entregaPlanificada: string): Trabajo => ({
+  id, numero, clienteId: 'c1', area: 'encuadernacion', entrada: 'cliente', salida: 'cliente',
+  recibidoEn: '2026-11-20T12:00:00Z', urgente: false, entregaPlanificada,
+})
+
 const etapas: Etapa[] = [
   { id: 'e1', area: 'encuadernacion', orden: 1, nombre: 'Recibido', esListo: false, esFinal: false },
   { id: 'e2', area: 'encuadernacion', orden: 2, nombre: 'En producción', esListo: false, esFinal: false },
@@ -80,6 +85,23 @@ describe('Reporte', () => {
   it('avisa cuando hay líneas sin clasificar', async () => {
     montar([mov('m1', 'l1', 3, null, 'desconocida', '2026-11-24T12:00:00Z')])
     expect(await screen.findByText(/1 línea sin clasificar/)).toBeInTheDocument()
+  })
+
+  it('muestra entregaPlanificada en la sección Por entregar', async () => {
+    const repo = crearMemoryRepo({
+      usuario: { id: 'u', nombre: 'Ana', rol: 'jefe_taller' },
+      etapas,
+      clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }],
+      trabajos: [trabConPlan('t3', 13, '2026-11-25T16:00:00Z')],
+      lineas: [lin('l3', 't3', 5, 'Agenda')],
+      movimientos: [
+        mov('mx1', 'l3', 5, null, 'e1', '2026-11-24T10:00:00Z'),
+        mov('mx2', 'l3', 5, 'e1', 'e3', '2026-11-24T11:00:00Z'),
+      ],
+    })
+    render(<Reporte repo={repo} />)
+    expect(await screen.findByLabelText('Fecha')).toHaveValue('2026-11-24')
+    expect(within(seccion('Por entregar')).getByText(/Planificado:/)).toBeInTheDocument()
   })
 
   it('"Imprimir" llama a window.print', async () => {

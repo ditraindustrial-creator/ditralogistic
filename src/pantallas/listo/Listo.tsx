@@ -173,6 +173,16 @@ export default function Listo({ repo }: { repo: Repo }) {
                   <p className="text-slate-700">
                     {f.listoDesde ? `${completo ? 'Todo listo' : 'Listo'} desde ${desdeCuando(f.listoDesde)}` : 'Aún no hay unidades listas'}
                   </p>
+                  {f.area === 'encuadernacion' && f.proximaEntregaPlanificada && (
+                    <p className="text-sm font-semibold text-teal-700">
+                      Próx. entrega: {formatoSoloHora.format(new Date(f.proximaEntregaPlanificada.hora))}
+                    </p>
+                  )}
+                  {f.area === 'encuadernacion' && !f.proximaEntregaPlanificada && f.entregaPlanificada && (
+                    <p className="text-sm text-slate-700">
+                      Planificado: {desdeCuando(f.entregaPlanificada)}
+                    </p>
+                  )}
                   {f.entregadas > 0 && (
                     <p className="text-sm text-slate-600">
                       {f.entregadas} {f.entregadas === 1 ? 'entregada' : 'entregadas'} · {f.total} en el pedido

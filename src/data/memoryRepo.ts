@@ -1,5 +1,5 @@
 import type { Repo } from './repo'
-import type { Asignacion, Cliente, Etapa, Linea, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
+import type { Asignacion, Cliente, EntregaPlanificada, Etapa, Linea, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
 import { ErrorTrabajo, MODALIDADES, primeraEtapa, RECEPCION_CLAVE_USADA, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
 import { ENTREGA_CLAVE_USADA, ErrorEntrega, planificarEntrega, validarEntradaEntrega, validarTransporte } from '../dominio/entrega'
 import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
@@ -33,6 +33,7 @@ export interface MemoryRepoOpciones {
   asignaciones?: Asignacion[]
   productos?: Producto[]
   visitas?: Visita[]
+  entregasPlanificadas?: EntregaPlanificada[]
 }
 
 const GESTION: readonly Rol[] = ['admin', 'secretaria', 'jefe_taller']
@@ -56,6 +57,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
   let asignaciones: Asignacion[] = (opciones.asignaciones ?? []).map((a) => ({ ...a }))
   const productos: Producto[] = (opciones.productos ?? []).map((p) => ({ ...p }))
   const visitas: Visita[] = (opciones.visitas ?? []).map((v) => ({ ...v }))
+  const entregasPlanificadas: EntregaPlanificada[] = (opciones.entregasPlanificadas ?? []).map((ep) => ({ ...ep }))
   let siguienteId = 1
   // Claves de idempotencia ya usadas, como trabajos.clave_idempotencia y entregas_registradas (0008).
   const clavesTrabajo = new Map<string, { usuarioId: string; trabajoId: string }>()
@@ -203,6 +205,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
         clientes: clientes.map((c) => ({ ...c })),
         recorridos: recorridos.map((r) => ({ ...r })),
         asignaciones: asignaciones.map((a) => ({ ...a })),
+        entregasPlanificadas: entregasPlanificadas.map((ep) => ({ ...ep })),
       }
     },
     suscribirCambios(alCambiar, alEstado) {
@@ -359,6 +362,41 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       if (!puedeEditar) throw new Error('Sin permiso para actualizar el detalle de esta línea.')
       if ('detalleTaller' in cambios) linea.detalleTaller = cambios.detalleTaller ?? undefined
       if ('servicioId' in cambios) linea.servicioId = cambios.servicioId ?? undefined
+    },
+    async guardarEntregaPlanificada(trabajoId, hora, cantidad, nota) {
+      if (!esGestion(actual)) throw new Error('No tienes permiso para gestionar entregas planificadas.')
+      const ep: EntregaPlanificada = { id: `ep-${siguienteId++}`, trabajoId, hora, cantidad, ...(nota ? { nota } : {}) }
+      entregasPlanificadas.push(ep)
+      avisar()
+      return { ...ep }
+    },
+    async actualizarEntregaPlanificada(id, cambios) {
+      if (!esGestion(actual)) throw new Error('No tienes permiso para gestionar entregas planificadas.')
+      const ep = entregasPlanificadas.find((x) => x.id === id)
+      if (!ep) throw new Error('La entrega planificada no existe.')
+      if (cambios.hora !== undefined) ep.hora = cambios.hora
+      if (cambios.cantidad !== undefined) ep.cantidad = cambios.cantidad
+      if ('nota' in cambios) ep.nota = cambios.nota ?? undefined
+      avisar()
+    },
+    async eliminarEntregaPlanificada(id) {
+      if (!esGestion(actual)) throw new Error('No tienes permiso para gestionar entregas planificadas.')
+      const idx = entregasPlanificadas.findIndex((x) => x.id === id)
+      if (idx < 0) throw new Error('La entrega planificada no existe.')
+      entregasPlanificadas.splice(idx, 1)
+      avisar()
+    },
+    async actualizarEntregaPlanificadaTrabajo(trabajoId, hora) {
+      if (!esGestion(actual)) throw new Error('No tienes permiso para gestionar entregas planificadas.')
+      const i = trabajos.findIndex((t) => t.id === trabajoId)
+      if (i < 0) throw new Error('El trabajo no existe.')
+      if (hora === null) {
+        const { entregaPlanificada: _, ...rest } = trabajos[i]
+        trabajos[i] = rest
+      } else {
+        trabajos[i] = { ...trabajos[i], entregaPlanificada: hora }
+      }
+      avisar()
     },
   }
 }

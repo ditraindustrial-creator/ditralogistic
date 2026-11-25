@@ -308,6 +308,51 @@ describe('Taller', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('No tienes acceso al taller')
   })
 
+  describe('entregas planificadas (encuadernación, solo gestión)', () => {
+    it('gestión puede agregar una entrega planificada y aparece en la lista', async () => {
+      const espia = vi.fn()
+      montar('jefe_taller', (r) => ({
+        ...r,
+        guardarEntregaPlanificada: (...a: Parameters<Repo['guardarEntregaPlanificada']>) => (espia(...a), r.guardarEntregaPlanificada(...a)),
+      }))
+      const fila = await abrir('Libros del Norte', 'Libro')
+      // La sección debe existir y tener un botón Agregar
+      expect(within(fila).getByText(/Entregas planificadas/i)).toBeInTheDocument()
+      await userEvent.click(within(fila).getByRole('button', { name: /Agregar/i }))
+      // Formulario con hora y cantidad
+      const inputHora = within(fila).getByLabelText(/Hora de entrega/i)
+      const inputCant = within(fila).getByLabelText(/Cantidad planificada/i)
+      await userEvent.clear(inputHora)
+      await userEvent.type(inputHora, '2026-11-27T14:00')
+      await userEvent.clear(inputCant)
+      await userEvent.type(inputCant, '50')
+      await userEvent.click(within(fila).getByRole('button', { name: /Guardar/i }))
+      await waitFor(() => expect(espia).toHaveBeenCalledWith('t2', expect.any(String), 50, undefined))
+      // La nueva entrada aparece en la fila
+      await waitFor(() => expect(within(fila).getByText(/14:00/)).toBeInTheDocument())
+    })
+
+    it('gestión puede eliminar una entrega planificada', async () => {
+      const usuario = { id: 'u', nombre: 'Ana', rol: 'jefe_taller' as const }
+      const base = crearMemoryRepo({
+        usuario, etapas,
+        clientes: [{ id: 'c2', nombre: 'Libros del Norte', rut: '2-7' }],
+        trabajos: [trab('t2', 12, 'c2', 'encuadernacion')],
+        lineas: [{ id: 'l2', trabajoId: 't2', producto: 'Libro', cantidad: 3 }],
+        movimientos: [mov('m3', 'l2', 3, null, 'b1')],
+        entregasPlanificadas: [{ id: 'ep1', trabajoId: 't2', hora: '2026-11-27T14:00:00Z', cantidad: 50 }],
+      })
+      render(<Taller repo={base} usuario={usuario} />)
+      const fila = await abrir('Libros del Norte', 'Libro')
+      // La entrega planificada aparece
+      expect(within(fila).getByText(/14:00/)).toBeInTheDocument()
+      // Clic en eliminar
+      await userEvent.click(within(fila).getByRole('button', { name: /Eliminar/i }))
+      // Desaparece
+      await waitFor(() => expect(within(fila).queryByText(/14:00/)).not.toBeInTheDocument())
+    })
+  })
+
   describe('línea con unidades en varias etapas (2 En taller, 4 Afilado)', () => {
     const cant = (fila: HTMLElement) => within(fila).getByLabelText('Cantidad')
     const boton = (fila: HTMLElement, n: string) => within(fila).getByRole('button', { name: n })

@@ -7,6 +7,10 @@ import { useFechaPorDefecto } from '../useFechaPorDefecto'
 import { fechaLarga } from '../ruta/comun'
 
 const campo = 'min-h-12 rounded border bg-white p-3 text-lg'
+
+const formatoPlanificado = new Intl.DateTimeFormat('es-CL', {
+  timeZone: 'America/Santiago', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+})
 const botonClaro = 'min-h-14 rounded border-2 border-slate-300 bg-white px-4 py-3 text-lg font-semibold'
 
 const unidades = (n: number) => `${n} ${n === 1 ? 'unidad' : 'unidades'}`
@@ -34,6 +38,9 @@ function Seccion({ titulo, vacio, filas, fecha, conDia }: { titulo: string; vaci
                 <p className="text-slate-700">
                   <span>Trabajo N.º {f.trabajoNumero}</span> · <span>{f.producto}</span> · <span className="font-semibold">{unidades(f.cantidad)}</span>
                 </p>
+                {f.entregaPlanificada && (
+                  <p className="text-sm text-slate-600">Planificado: {formatoPlanificado.format(new Date(f.entregaPlanificada))}</p>
+                )}
               </div>
               <span className="whitespace-nowrap text-lg font-bold text-teal-800 print:text-black">{conDia ? etiquetaHora(f.dia, fecha, f.hora) : f.hora}</span>
             </li>
