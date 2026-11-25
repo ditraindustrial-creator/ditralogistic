@@ -115,3 +115,11 @@ Task 10: complete (commits b49eeb4..ba8887e, review clean)
 Task 11: Ruling CONFIRMADO (dueño 2026-11-25): (a) tipos de herramienta que el chofer identifica: guillotina, disco, trilateral, broca + tamaño numérico (ej. 1/2", 115, 137 = tamaños cuchillos de guillotina) → el catálogo ERP ya los codifica en el nombre del producto ("CUCHILLO GUILLOTINA 115"); recepción filtra por tipo='herramienta' para afilado y por tipo='servicio' de encuadernación para encuadernación; (b) hora planificada en encuadernación: AMBAS — `trabajos.entrega_planificada` (global) Y una hora por entrega parcial en tabla `entregas_planificadas(trabajo_id, hora, cantidad, nota?)`
 Task 11a: complete (commits ba8887e..dc087e9, tests: npx vitest run → 477/477, tsc → clean)
 Task 11b: complete (commits dc087e9..fb494ac, tests: npx vitest run → 482/482, tsc → clean)
+Final review: 4 Important (timestamp bug, UTC display, missing global EP UI, missing edit UI), 3 Minor
+Final: fixed timestamp bug (santiagLocalToIso) — "gestión puede agregar una entrega planificada" RED→GREEN, suite 484/484
+Final: fixed UTC display (horaSantiago en Taller + HojaChofer) — same test validates hora display, suite 484/484
+Final: fixed missing edit UI (abrirEditar, epEditandoId, Editar button) — "gestión puede editar una entrega planificada" RED→GREEN, suite 484/484
+Final: fixed missing global EP UI (guardarGlobalEp, globalEpHora state, Hora global section) — "gestión puede establecer la hora global" RED→GREEN, suite 484/484
+Final: minor (deferred): abrirEditar pre-fills hora via Intl.DateTimeFormat with en-CA locale — edge case if DST boundary at the exact EP hora
+Final: minor (deferred): guardarGlobalEp does not validate hora string before converting
+Final: minor (deferred): globalEpHora state not reset after save; UX leaves stale value in input
