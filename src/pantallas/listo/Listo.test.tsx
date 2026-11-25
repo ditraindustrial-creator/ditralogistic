@@ -71,6 +71,17 @@ afterEach(() => {
 const titulos = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
 
 describe('Listo', () => {
+  it('muestra la entrega planificada de encuadernación (próxima parcial y total)', async () => {
+    montar((r) => {
+      void r.planificarEntregas('t2', { entrega: '2026-11-27T15:00', parciales: [{ planificada: '2026-11-24T10:00', cantidad: 1 }, { planificada: '2026-11-25T16:30', cantidad: 2 }] })
+      return r
+    })
+    const t = await tarjeta('Libros del Norte')
+    // Hoy 24/11 12:00: la parcial de las 10:00 ya pasó; la próxima es la del miércoles.
+    expect(within(t).getByText('Entrega planificada: Parcial: mié 25/11 16:30 (2 u.) · Total: vie 27/11 15:00')).toBeInTheDocument()
+    expect(within(await tarjeta('Imprenta Sur')).queryByText(/Entrega planificada/)).not.toBeInTheDocument()
+  })
+
   it('muestra "4 de 6 listas" con la hora de Chile, agrupa por la próxima ruta y deja aparte los sin recorrido', async () => {
     montar()
     const fila = await tarjeta('Imprenta Sur')

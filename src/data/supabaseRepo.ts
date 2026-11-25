@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Repo } from './repo'
-import type { Area, Asignacion, Cliente, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
+import type { Area, Asignacion, Cliente, EntregaParcial, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
 import {
   ErrorCliente, planificarAsignaciones, planificarClientes, planificarProductos, RUT_DUPLICADO, validarAsignacion, validarClienteNuevo,
 } from '../dominio/maestros'
@@ -8,6 +8,7 @@ import { ErrorTrabajo, MODALIDADES, validarTrabajoNuevo, type DatosTrabajoNuevo 
 import { ErrorEntrega, validarEntradaEntrega, validarTransporte } from '../dominio/entrega'
 import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
 import { ErrorMovimiento, SOLO_GESTION_CORRIGE_ENTREGAS, validarCantidad } from '../dominio/avance'
+import { ErrorPlanificacion, normalizarDetalle, recortarFechaHora, validarPlan } from '../dominio/planificacion'
 
 interface FilaMovimiento {
   id: string
@@ -67,6 +68,7 @@ interface FilaTrabajo {
   transporte: string | null
   urgente: boolean
   notas: string | null
+  entrega_planificada?: string | null
 }
 
 export function filaATrabajo(f: FilaTrabajo): Trabajo {
@@ -85,6 +87,7 @@ export function filaATrabajo(f: FilaTrabajo): Trabajo {
   if (f.factura) t.factura = f.factura
   if (f.transporte) t.transporte = f.transporte
   if (f.notas) t.notas = f.notas
+  if (f.entrega_planificada) t.entregaPlanificada = recortarFechaHora(f.entrega_planificada)
   return t
 }
 
@@ -133,6 +136,7 @@ interface FilaProducto {
   codigo: string
   nombre: string
   area: string
+  tipo?: string | null
 }
 
 export function filaACliente(f: FilaCliente): Cliente {
@@ -150,7 +154,7 @@ export function filaAAsignacion(f: FilaAsignacion): Asignacion {
   return { clienteId: f.cliente_id, recorridoId: f.recorrido_id, fija: f.fija, orden: Number(f.orden) }
 }
 export function filaAProducto(f: FilaProducto): Producto {
-  return { id: f.id, codigo: f.codigo, nombre: f.nombre, area: f.area as Area }
+  return { id: f.id, codigo: f.codigo, nombre: f.nombre, area: f.area as Area, tipo: f.tipo === 'servicio' ? 'servicio' : 'herramienta' }
 }
 
 interface FilaLinea {
@@ -159,6 +163,8 @@ interface FilaLinea {
   producto: string
   cantidad: number
   nota: string | null
+  servicio?: string | null
+  detalle_taller?: string | null
 }
 interface FilaEtapa {
   id: string
@@ -169,12 +175,42 @@ interface FilaEtapa {
   es_final: boolean
 }
 
+interface FilaParcial {
+  id: string
+  trabajo_id: string
+  planificada: string
+  cantidad: number | null
+  nota: string | null
+}
+
+export function filaAParcial(f: FilaParcial): EntregaParcial {
+  const p: EntregaParcial = { id: f.id, trabajoId: f.trabajo_id, planificada: recortarFechaHora(f.planificada) }
+  if (f.cantidad !== null && f.cantidad !== undefined) p.cantidad = Number(f.cantidad)
+  if (f.nota) p.nota = f.nota
+  return p
+}
+
+/**
+ * Traduce un error de guardar_detalle_linea / planificar_entregas: las reglas (P0001) y los avisos
+ * de permiso (42501) de esas funciones ya vienen en español; el resto se reemplaza por `generico`.
+ */
+export function errorDePlanificacion(e: { code?: string; message: string }, generico: string): Error {
+  if (e.code === 'P0001') return new ErrorPlanificacion(e.message)
+  if (e.code === '42501') {
+    return new ErrorPlanificacion(/^(No tienes permiso|Debes iniciar sesión)/.test(e.message) ? e.message : 'No tienes permiso para hacer este cambio.')
+  }
+  if (e.code === '22007' || e.code === '22008' || e.code === '22P02') return new ErrorPlanificacion('Revisa las fechas y cantidades: hay un valor que no es válido.')
+  return new Error(generico)
+}
+
 const COLUMNAS_TRABAJO =
-  'id, numero, cliente_id, area, entrada, salida, recibido_en, guia_retiro, guia_despacho, factura, transporte, urgente, notas'
+  'id, numero, cliente_id, area, entrada, salida, recibido_en, guia_retiro, guia_despacho, factura, transporte, urgente, notas, entrega_planificada'
 
 export function filaALinea(f: FilaLinea): Linea {
   const l: Linea = { id: f.id, trabajoId: f.trabajo_id, producto: f.producto, cantidad: f.cantidad }
   if (f.nota) l.nota = f.nota
+  if (f.servicio) l.servicio = f.servicio
+  if (f.detalle_taller) l.detalleTaller = f.detalle_taller
   return l
 }
 export function filaAEtapa(f: FilaEtapa): Etapa {
@@ -362,9 +398,9 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
     async cargarTodo() {
       try {
         // Cada tabla grande se lee por páginas (PostgREST corta en 1000 filas), en paralelo.
-        const [trabajos, lineas, movimientos, etapas, clientes, recorridos, asignaciones] = await Promise.all([
+        const [trabajos, lineas, movimientos, etapas, clientes, recorridos, asignaciones, parciales] = await Promise.all([
           leerTodas<FilaTrabajo>((d, h) => sb.from('trabajos').select(COLUMNAS_TRABAJO).order('id').range(d, h)),
-          leerTodas<FilaLinea>((d, h) => sb.from('lineas').select('id, trabajo_id, producto, cantidad, nota').order('id').range(d, h)),
+          leerTodas<FilaLinea>((d, h) => sb.from('lineas').select('id, trabajo_id, producto, cantidad, nota, servicio, detalle_taller').order('id').range(d, h)),
           leerTodas<FilaMovimiento>((d, h) =>
             sb.from('movimientos').select('id, linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id, creado_en').order('id').range(d, h),
           ),
@@ -372,6 +408,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
           leerTodas<FilaCliente>((d, h) => sb.from('clientes').select(COLUMNAS_CLIENTE).order('id').range(d, h)),
           leerTodas<FilaRecorrido>((d, h) => sb.from('recorridos').select(COLUMNAS_RECORRIDO).order('id').range(d, h)),
           leerAsignaciones(),
+          leerTodas<FilaParcial>((d, h) => sb.from('entregas_parciales').select('id, trabajo_id, planificada, cantidad, nota').order('id').range(d, h)),
         ])
         return {
           trabajos: trabajos.map(filaATrabajo),
@@ -381,6 +418,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
           clientes: clientes.map(filaACliente),
           recorridos: recorridos.map(filaARecorrido),
           asignaciones: asignaciones.map(filaAAsignacion),
+          entregasParciales: parciales.map(filaAParcial),
         }
       } catch {
         throw new Error('No se pudo cargar la información. Revisa tu conexión.')
@@ -456,6 +494,21 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
         p_transporte: transporte ?? null,
       })
       if (error) throw errorDeEntrega(error)
+    },
+    async guardarDetalleLinea(lineaId, detalle) {
+      const d = normalizarDetalle(detalle)
+      const { error } = await sb.rpc('guardar_detalle_linea', { p_linea: lineaId, p_servicio: d.servicio, p_detalle: d.detalle })
+      if (error) throw errorDePlanificacion(error, 'No se pudo guardar el detalle. Revisa tu conexión e inténtalo de nuevo.')
+    },
+    async planificarEntregas(trabajoId, plan) {
+      // La base vuelve a validar (incluida la suma contra las unidades reales del trabajo).
+      const p = validarPlan(plan, Number.MAX_SAFE_INTEGER)
+      const { error } = await sb.rpc('planificar_entregas', {
+        p_trabajo: trabajoId,
+        p_entrega: p.entrega ?? null,
+        p_parciales: p.parciales.map((x) => ({ planificada: x.planificada, cantidad: x.cantidad ?? null, nota: x.nota ?? null })),
+      })
+      if (error) throw errorDePlanificacion(error, 'No se pudo guardar la planificación. Revisa tu conexión e inténtalo de nuevo.')
     },
     async listarClientes() {
       try {
@@ -556,7 +609,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
     async listarProductos() {
       try {
         const filas = await leerTodas<FilaProducto>((d, h) =>
-          sb.from('productos').select('id, codigo, nombre, area').order('id').range(d, h),
+          sb.from('productos').select('id, codigo, nombre, area, tipo').order('id').range(d, h),
         )
         return filas.map(filaAProducto).sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'))
       } catch {

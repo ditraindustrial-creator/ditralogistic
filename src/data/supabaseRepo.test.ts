@@ -59,8 +59,9 @@ describe('maestros: filas de la base a tipos', () => {
       id: 'r', nombre: 'Lunes', dia: 1, camioneta: 'A', lejano: true,
     })
     expect(filaAProducto({ id: 'p', codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado' })).toEqual({
-      id: 'p', codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado',
+      id: 'p', codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado', tipo: 'herramienta',
     })
+    expect(filaAProducto({ id: 'p', codigo: 'S-1', nombre: 'Afilado recto', area: 'afilado', tipo: 'servicio' }).tipo).toBe('servicio')
   })
   it('errorDeMaestros traduce permisos, duplicados y otros', () => {
     expect(errorDeMaestros({ code: '42501', message: 'rls' }).message).toBe('No tienes permiso para modificar los maestros.')

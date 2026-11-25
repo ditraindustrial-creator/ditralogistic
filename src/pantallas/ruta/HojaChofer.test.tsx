@@ -53,7 +53,7 @@ function montar(opciones: { rol?: Rol; envolver?: (r: Repo) => Repo; visitas?: V
       { id: 'l3', trabajoId: 't3', producto: 'Hacha', cantidad: 2 },
     ],
     movimientos: [mov('m1', 'l1', 4, null, 'a4'), mov('m2', 'l1b', 1, null, 'a4'), mov('m3', 'l2', 4, null, 'a4'), mov('m4', 'l3', 2, null, 'a4')],
-    productos: [{ id: 'p1', codigo: 'CU', nombre: 'Cuchillo 20 cm', area: 'afilado' }],
+    productos: [{ id: 'p1', codigo: 'CU', nombre: 'Cuchillo 20 cm', area: 'afilado', tipo: 'herramienta' }],
     visitas: opciones.visitas,
   })
   const repo = opciones.envolver ? opciones.envolver(base) : base
@@ -75,6 +75,14 @@ afterEach(() => {
 
 describe('HojaChofer', () => {
   describe('fecha y recorrido', () => {
+    it('en la tarjeta muestra la entrega planificada del trabajo (hora acordada con el cliente)', async () => {
+      // El área no importa para mostrar: aquí basta con un trabajo que traiga hora planificada.
+      montar({ dosRecorridos: false, trabajos: [trab('t1', 11, 'c1'), trab('t2', 12, 'c2', { entregaPlanificada: '2026-11-24T16:00' }), trab('t3', 13, 'c3')] })
+      const t = await tarjeta('Libros del Norte')
+      expect(within(t).getByText('Entrega planificada: Total: mar 24/11 16:00')).toBeInTheDocument()
+      expect(within(await tarjeta('Imprenta Sur')).queryByText(/Entrega planificada/)).not.toBeInTheDocument()
+    })
+
     it('la fecha por defecto es hoy en Chile', async () => {
       montar()
       expect(await screen.findByLabelText('Fecha')).toHaveValue(FECHA)

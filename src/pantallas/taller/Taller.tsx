@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { ErrorMovimiento, validarMovimiento } from '../../dominio/avance'
-import { esGestion, puedeEntregar, puedeVer } from '../../dominio/permisos'
+import { esGestion, puedeDetallar, puedeEntregar, puedePlanificar, puedeVer } from '../../dominio/permisos'
+import { fechaHoraSantiago, planesPorTrabajo, resumenPlan } from '../../dominio/planificacion'
 import type { LineaEntregable } from '../../dominio/entrega'
 import { areasDelRol, destinoPorDefecto, lineasEnCurso, origenPorDefecto, reconciliarSeleccion, type LineaTaller } from '../../dominio/taller'
-import type { Area, UsuarioActual } from '../../dominio/tipos'
+import type { Area, Producto, UsuarioActual } from '../../dominio/tipos'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import Entrega from '../entrega/Entrega'
+import { DetalleLinea, PlanEntrega } from './DetalleTaller'
 
 const AREAS: Record<Area, string> = { afilado: 'Afilado', encuadernacion: 'Encuadernación' }
 const ERROR_GENERICO = 'No se pudo mover las unidades. Revisa tu conexión e inténtalo de nuevo.'
@@ -54,6 +56,22 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   const [confirmacion, setConfirmacion] = useState('')
   // Mover a la etapa final es entregar: se abre el flujo de entrega (con documento) en vez de mover.
   const [entrega, setEntrega] = useState<{ lineaId: string; cantidad: number } | null>(null)
+
+  // Catálogo de servicios del área, solo como sugerencia: si no carga, se escribe a mano.
+  const [productos, setProductos] = useState<Producto[]>([])
+  useEffect(() => {
+    let activo = true
+    repo.listarProductos().then(
+      (p) => activo && setProductos(p),
+      () => {},
+    )
+    return () => {
+      activo = false
+    }
+  }, [repo])
+  const serviciosDe = (a: Area) => productos.filter((p) => p.area === a && p.tipo === 'servicio').map((p) => p.nombre)
+  const planes = useMemo(() => (datos ? planesPorTrabajo(datos.trabajos, datos.entregasParciales) : new Map()), [datos])
+  const ahora = fechaHoraSantiago(new Date().toISOString())
 
   const entrega_ok = puedeEntregar(usuario.rol)
   // Sacar unidades de una etapa final (corregir una entrega) es solo de gestión, igual que en la base.
@@ -231,6 +249,10 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                   </span>
                 </span>
                 <span className="text-xl font-bold">{l.producto} · {l.cantidad}</span>
+                {l.servicio && <span className="text-base">Servicio: {l.servicio}</span>}
+                {l.area === 'encuadernacion' && resumenPlan(planes.get(l.trabajoId), ahora) && (
+                  <span className="text-base font-semibold text-amber-800">Entrega: {resumenPlan(planes.get(l.trabajoId), ahora)}</span>
+                )}
                 {l.urgente && <span className="text-sm font-bold text-red-700">URGENTE</span>}
                 <span className="flex flex-wrap gap-2">
                   {l.distribucion.map((d) => (
@@ -298,6 +320,28 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                   <button type="button" className={botonGrande} disabled={moviendo} onClick={() => void mover(l)}>
                     {moviendo ? 'Moviendo…' : l.etapasArea.find((e) => e.id === sel.destinoId)?.esFinal ? 'Entregar…' : 'Mover'}
                   </button>
+
+                  {puedeDetallar(usuario.rol, l.area) && (
+                    <DetalleLinea
+                      key={`detalle-${l.lineaId}`}
+                      repo={repo}
+                      lineaId={l.lineaId}
+                      servicio={l.servicio}
+                      detalle={l.detalleTaller}
+                      servicios={serviciosDe(l.area)}
+                      alGuardar={recargar}
+                    />
+                  )}
+                  {l.area === 'encuadernacion' && puedePlanificar(usuario.rol) && (
+                    <PlanEntrega
+                      key={`plan-${l.trabajoId}`}
+                      repo={repo}
+                      trabajoId={l.trabajoId}
+                      numero={l.numero}
+                      plan={planes.get(l.trabajoId)}
+                      alGuardar={recargar}
+                    />
+                  )}
                 </div>
               )}
             </li>

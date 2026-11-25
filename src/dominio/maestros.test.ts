@@ -50,13 +50,13 @@ describe('planificarClientes: sin cambios', () => {
 
 describe('planificarProductos', () => {
   it('separa nuevos y actualizaciones por código', () => {
-    const existentes: Producto[] = [{ id: 'p1', codigo: 'A-1', nombre: 'Viejo', area: 'afilado' }]
+    const existentes: Producto[] = [{ id: 'p1', codigo: 'A-1', nombre: 'Viejo', area: 'afilado', tipo: 'herramienta' }]
     const p = planificarProductos(existentes, [
-      { codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado' },
-      { codigo: 'B-2', nombre: 'Libro', area: 'encuadernacion' },
+      { codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado', tipo: 'herramienta' },
+      { codigo: 'B-2', nombre: 'Libro', area: 'encuadernacion', tipo: 'herramienta' },
     ])
-    expect(p.nuevos).toEqual([{ codigo: 'B-2', nombre: 'Libro', area: 'encuadernacion' }])
-    expect(p.actualizaciones).toEqual([{ id: 'p1', cambios: { codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado' } }])
+    expect(p.nuevos).toEqual([{ codigo: 'B-2', nombre: 'Libro', area: 'encuadernacion', tipo: 'herramienta' }])
+    expect(p.actualizaciones).toEqual([{ id: 'p1', cambios: { codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado', tipo: 'herramienta' } }])
   })
 })
 

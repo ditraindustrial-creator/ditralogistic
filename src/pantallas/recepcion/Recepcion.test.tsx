@@ -25,8 +25,9 @@ function montar(usuario: UsuarioActual = secretaria, envolver?: (r: Repo) => Rep
       { id: 'c2', nombre: 'Ñandú SpA', rut: '12345678-5' },
     ],
     productos: [
-      { id: 'p1', codigo: 'CU-20', nombre: 'Cuchillo 20 cm', area: 'afilado' },
-      { id: 'p2', codigo: 'LI-1', nombre: 'Libro tapa dura', area: 'encuadernacion' },
+      { id: 'p1', codigo: 'CU-20', nombre: 'Cuchillo 20 cm', area: 'afilado', tipo: 'herramienta' },
+      { id: 'p2', codigo: 'LI-1', nombre: 'Libro tapa dura', area: 'encuadernacion', tipo: 'servicio' },
+      { id: 'p3', codigo: 'SV-1', nombre: 'Afilado recto', area: 'afilado', tipo: 'servicio' },
     ],
   })
   const repo = envolver ? envolver(base) : base
@@ -123,6 +124,16 @@ describe('Recepcion', () => {
     expect(opciones()).toEqual(['Cuchillo 20 cm'])
     await userEvent.click(screen.getByLabelText('Encuadernación'))
     expect(opciones()).toEqual(['Libro tapa dura'])
+  })
+
+  it('en afilado solo sugiere herramientas (el servicio lo define el taller) y lo explica', async () => {
+    montar()
+    await screen.findByLabelText('Cliente')
+    const opciones = () => Array.from(document.querySelectorAll('datalist option')).map((o) => (o as HTMLOptionElement).value)
+    expect(opciones()).not.toContain('Afilado recto')
+    expect(screen.getByText(/Anota solo la herramienta/)).toBeInTheDocument()
+    await userEvent.click(screen.getByLabelText('Encuadernación'))
+    expect(screen.queryByText(/Anota solo la herramienta/)).not.toBeInTheDocument()
   })
 
   it('se puede quitar una línea pero siempre queda al menos una', async () => {

@@ -4,6 +4,7 @@ import type { Etapa, Movimiento } from './tipos'
 
 export interface FilaReporte {
   clienteNombre: string
+  trabajoId: string
   trabajoNumero: number
   producto: string
   cantidad: number
@@ -122,6 +123,7 @@ export function reporteDiario(fecha: string, datos: DatosOperacion): ReporteDiar
 
     const fila = (cantidad: number, desde: string): FilaReporte => ({
       clienteNombre: clientePorId.get(trabajo.clienteId)?.nombre ?? 'Cliente desconocido',
+      trabajoId: trabajo.id,
       trabajoNumero: trabajo.numero,
       producto: linea.producto,
       cantidad,

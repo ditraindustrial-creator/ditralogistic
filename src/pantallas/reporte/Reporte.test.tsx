@@ -18,8 +18,9 @@ const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d:
   id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn,
 })
 
-function montar(movimientos: Movimiento[]) {
+function montar(movimientos: Movimiento[], planificado = false) {
   const repo = crearMemoryRepo({
+    ...(planificado ? { entregasParciales: [{ id: 'p1', trabajoId: 't1', planificada: '2026-11-25T09:00', cantidad: 2 }] } : {}),
     usuario: { id: 'u', nombre: 'Ana', rol: 'jefe_taller' },
     etapas,
     clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }],
@@ -37,6 +38,13 @@ describe('Reporte', () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-24T15:00:00Z') })
   })
   afterEach(() => vi.useRealTimers())
+
+  it('en cada fila de un trabajo con plan muestra la entrega planificada', async () => {
+    montar([mov('m1', 'l1', 3, null, 'e1', '2026-11-24T12:00:00Z'), mov('m2', 'l2', 2, null, 'e1', '2026-11-24T12:00:00Z')], true)
+    const recibido = await screen.findByRole('region', { name: /^Recién recibido/ })
+    expect(within(recibido).getByText('Entrega planificada: Parcial: mié 25/11 09:00 (2 u.)')).toBeInTheDocument()
+    expect(within(recibido).getAllByText(/Entrega planificada/)).toHaveLength(1)
+  })
 
   it('muestra las cuatro listas del día de hoy con cantidades y horas', async () => {
     montar([

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { diaLocal } from '../../dominio/fechas'
 import { resumenListo, type FilaListo } from '../../dominio/listo'
+import { fechaHoraSantiago, resumenPlan } from '../../dominio/planificacion'
 import type { Area } from '../../dominio/tipos'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import { useFechaPorDefecto } from '../useFechaPorDefecto'
@@ -75,6 +76,7 @@ export default function Listo({ repo }: { repo: Repo }) {
   // Hoy en Chile (se renueva al cambiar el día con la pantalla abierta): la próxima ruta se cuenta desde hoy, hoy incluido.
   const [hoy] = useFechaPorDefecto(elMismoDia)
   const filas = useMemo(() => (datos ? resumenListo(datos, hoy) : null), [datos, hoy])
+  const ahora = fechaHoraSantiago(new Date().toISOString())
   const [area, setArea] = useState('')
   const [cliente, setCliente] = useState('')
   const [recorrido, setRecorrido] = useState('')
@@ -170,6 +172,9 @@ export default function Listo({ repo }: { repo: Repo }) {
                     {f.listas} de {f.pendientes} listas
                   </p>
                   {f.rutas.length > 0 && <p className="text-sm text-slate-600">{textoRutas(f)}</p>}
+                  {resumenPlan(f.plan, ahora) && (
+                    <p className="font-semibold text-amber-800">Entrega planificada: {resumenPlan(f.plan, ahora)}</p>
+                  )}
                   <p className="text-slate-700">
                     {f.listoDesde ? `${completo ? 'Todo listo' : 'Listo'} desde ${desdeCuando(f.listoDesde)}` : 'Aún no hay unidades listas'}
                   </p>

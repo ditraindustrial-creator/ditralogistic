@@ -179,8 +179,8 @@ describe('importarProductos', () => {
       mapeo,
     )
     expect(r.productos).toEqual([
-      { codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado' },
-      { codigo: 'E-1', nombre: 'Libro', area: 'encuadernacion' },
+      { codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado', tipo: 'herramienta' },
+      { codigo: 'E-1', nombre: 'Libro', area: 'encuadernacion', tipo: 'herramienta' },
     ])
     expect(r.errores).toEqual([
       { fila: 4, motivo: 'Falta el código.' },
@@ -192,7 +192,21 @@ describe('importarProductos', () => {
 
   it('sin columna de área usa el área por defecto', () => {
     const r = importarProductos([{ c: '1', n: 'Tijera' }], { codigo: 'c', nombre: 'n', areaPorDefecto: 'afilado' })
-    expect(r.productos).toEqual([{ codigo: '1', nombre: 'Tijera', area: 'afilado' }])
+    expect(r.productos).toEqual([{ codigo: '1', nombre: 'Tijera', area: 'afilado', tipo: 'herramienta' }])
+  })
+
+  it('lee el tipo (herramienta o servicio) de su columna; vacío usa el tipo por defecto; lo inválido se reporta', () => {
+    const r = importarProductos(
+      [
+        { c: '1', n: 'Cuchillo recto', t: 'Herramienta' },
+        { c: '2', n: 'Afilado de disco', t: 'SERVICIO' },
+        { c: '3', n: 'Sin tipo', t: '' },
+        { c: '4', n: 'Raro', t: 'repuesto' },
+      ],
+      { codigo: 'c', nombre: 'n', tipo: 't', areaPorDefecto: 'afilado', tipoPorDefecto: 'servicio' },
+    )
+    expect(r.productos.map((p) => [p.codigo, p.tipo])).toEqual([['1', 'herramienta'], ['2', 'servicio'], ['3', 'servicio']])
+    expect(r.errores).toEqual([{ fila: 5, motivo: 'El tipo "repuesto" no es válido (usa herramienta o servicio).' }])
   })
 
   it('sin columna ni área por defecto, cada fila reporta que falta el área', () => {

@@ -131,6 +131,7 @@ function PestanaProductos({ repo, productos, recargar }: { repo: Repo; productos
           { clave: 'codigo', etiqueta: 'Columna del código', obligatorio: true, pistas: ['codigo', 'cod'] },
           { clave: 'nombre', etiqueta: 'Columna del nombre', obligatorio: true, pistas: ['nombre', 'descripcion', 'producto'] },
           { clave: 'area', etiqueta: 'Columna del área (opcional)', obligatorio: false, pistas: ['area'] },
+          { clave: 'tipo', etiqueta: 'Columna del tipo: herramienta o servicio (opcional; vacío = herramienta)', obligatorio: false, pistas: ['tipo'] },
         ]}
         extra={
           <label className="flex flex-col gap-1">
@@ -152,6 +153,7 @@ function PestanaProductos({ repo, productos, recargar }: { repo: Repo; productos
             // El área fija elegida manda sobre la columna.
             area: areaPorDefecto ? undefined : m.area || undefined,
             areaPorDefecto: areaPorDefecto || undefined,
+            tipo: m.tipo || undefined,
           })
           const r = buenos.length > 0 ? await repo.guardarProductos(buenos) : { creados: 0, actualizados: 0, sinCambios: 0 }
           await recargar()
@@ -173,7 +175,7 @@ function PestanaProductos({ repo, productos, recargar }: { repo: Repo; productos
             {coincidencias.slice(0, MAX_FILAS_VISIBLES).map((p) => (
               <li key={p.id} className="rounded border p-3">
                 <span className="block text-lg font-semibold">{p.nombre}</span>
-                <span className="text-slate-600">{`${p.codigo} · ${p.area === 'afilado' ? 'Afilado' : 'Encuadernación'}`}</span>
+                <span className="text-slate-600">{`${p.codigo} · ${p.area === 'afilado' ? 'Afilado' : 'Encuadernación'} · ${p.tipo === 'servicio' ? 'Servicio' : 'Herramienta'}`}</span>
               </li>
             ))}
           </ul>

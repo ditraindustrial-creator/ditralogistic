@@ -5,6 +5,7 @@ import { etiquetaHora, reporteDiario, type FilaReporte } from '../../dominio/rep
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import { useFechaPorDefecto } from '../useFechaPorDefecto'
 import { fechaLarga } from '../ruta/comun'
+import { fechaHoraSantiago, planesPorTrabajo, resumenPlan, type PlanTrabajo } from '../../dominio/planificacion'
 
 const campo = 'min-h-12 rounded border bg-white p-3 text-lg'
 const botonClaro = 'min-h-14 rounded border-2 border-slate-300 bg-white px-4 py-3 text-lg font-semibold'
@@ -12,8 +13,11 @@ const botonClaro = 'min-h-14 rounded border-2 border-slate-300 bg-white px-4 py-
 const unidades = (n: number) => `${n} ${n === 1 ? 'unidad' : 'unidades'}`
 const total = (filas: FilaReporte[]) => filas.reduce((s, f) => s + f.cantidad, 0)
 
-function Seccion({ titulo, vacio, filas, fecha, conDia }: { titulo: string; vacio: string; filas: FilaReporte[]; fecha: string; conDia: boolean }) {
+function Seccion({ titulo, vacio, filas, fecha, conDia, planes }: {
+  titulo: string; vacio: string; filas: FilaReporte[]; fecha: string; conDia: boolean; planes: Map<string, PlanTrabajo>
+}) {
   const id = useId()
+  const ahora = fechaHoraSantiago(new Date().toISOString())
   return (
     <section aria-labelledby={id} className="flex flex-col gap-2 print:break-inside-avoid">
       <div className="flex items-baseline justify-between gap-2 border-b-2 border-slate-300 pb-1">
@@ -34,6 +38,9 @@ function Seccion({ titulo, vacio, filas, fecha, conDia }: { titulo: string; vaci
                 <p className="text-slate-700">
                   <span>Trabajo N.º {f.trabajoNumero}</span> · <span>{f.producto}</span> · <span className="font-semibold">{unidades(f.cantidad)}</span>
                 </p>
+                {resumenPlan(planes.get(f.trabajoId), ahora) && (
+                  <p className="font-semibold text-amber-800 print:text-black">Entrega planificada: {resumenPlan(planes.get(f.trabajoId), ahora)}</p>
+                )}
               </div>
               <span className="whitespace-nowrap text-lg font-bold text-teal-800 print:text-black">{conDia ? etiquetaHora(f.dia, fecha, f.hora) : f.hora}</span>
             </li>
@@ -52,6 +59,7 @@ export default function Reporte({ repo }: { repo: Repo }) {
   const [fecha, elegirFecha] = useFechaPorDefecto(elMismoDia)
   const hoy = diaLocal(new Date().toISOString())
   const reporte = useMemo(() => (datos ? reporteDiario(fecha, datos) : null), [datos, fecha])
+  const planes = useMemo(() => (datos ? planesPorTrabajo(datos.trabajos, datos.entregasParciales) : new Map<string, PlanTrabajo>()), [datos])
   const esHoy = fecha === hoy
 
   return (
@@ -80,10 +88,10 @@ export default function Reporte({ repo }: { repo: Repo }) {
               {reporte.sinClasificar} {reporte.sinClasificar === 1 ? 'línea sin clasificar' : 'líneas sin clasificar'}: tiene movimientos en etapas que no existen y no aparece en el reporte. Avisa al administrador.
             </p>
           )}
-          <Seccion titulo={esHoy ? 'Listo hoy' : 'Listo ese día'} vacio="Nadie quedó listo ese día." filas={reporte.listo} fecha={fecha} conDia={false} />
-          <Seccion titulo="En producción" vacio="No hay trabajos en producción." filas={reporte.enProduccion} fecha={fecha} conDia />
-          <Seccion titulo="Por entregar" vacio="No hay nada pendiente de entrega." filas={reporte.porEntregar} fecha={fecha} conDia />
-          <Seccion titulo="Recién recibido" vacio="No hay trabajos recién recibidos sin empezar." filas={reporte.recibido} fecha={fecha} conDia />
+          <Seccion titulo={esHoy ? 'Listo hoy' : 'Listo ese día'} vacio="Nadie quedó listo ese día." filas={reporte.listo} fecha={fecha} conDia={false} planes={planes} />
+          <Seccion titulo="En producción" vacio="No hay trabajos en producción." filas={reporte.enProduccion} fecha={fecha} conDia planes={planes} />
+          <Seccion titulo="Por entregar" vacio="No hay nada pendiente de entrega." filas={reporte.porEntregar} fecha={fecha} conDia planes={planes} />
+          <Seccion titulo="Recién recibido" vacio="No hay trabajos recién recibidos sin empezar." filas={reporte.recibido} fecha={fecha} conDia planes={planes} />
         </>
       )}
     </div>

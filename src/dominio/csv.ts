@@ -1,4 +1,4 @@
-import type { Area, Asignacion, Cliente, Producto, Recorrido } from './tipos'
+import type { Area, Asignacion, Cliente, Producto, Recorrido, TipoProducto } from './tipos'
 import { normalizarNombre } from './ruta'
 
 export interface ErrorFila {
@@ -175,12 +175,22 @@ export interface MapeoProductos {
   /** Columna con el área; si no se elige, se usa areaPorDefecto. */
   area?: string
   areaPorDefecto?: Area
+  /** Columna con el tipo (herramienta o servicio); vacío o sin columna: tipoPorDefecto (herramienta si no se indica). */
+  tipo?: string
+  tipoPorDefecto?: TipoProducto
 }
 
 export type ProductoImportado = Omit<Producto, 'id'>
 
 function quitarAcentos(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+function leerTipo(s: string): TipoProducto | null {
+  const v = quitarAcentos(s.trim().toLowerCase())
+  if (v === 'herramienta') return 'herramienta'
+  if (v === 'servicio') return 'servicio'
+  return null
 }
 
 function leerArea(s: string): Area | null {
@@ -194,7 +204,7 @@ export function importarProductos(
   filas: Record<string, string>[],
   mapeo: MapeoProductos,
 ): { productos: ProductoImportado[]; errores: ErrorFila[] } {
-  const errores = columnasFaltantes(filas, [mapeo.codigo, mapeo.nombre, mapeo.area])
+  const errores = columnasFaltantes(filas, [mapeo.codigo, mapeo.nombre, mapeo.area, mapeo.tipo])
   if (errores.length > 0) return { productos: [], errores }
   const productos: ProductoImportado[] = []
   const vistos = new Map<string, number>()
@@ -216,10 +226,19 @@ export function importarProductos(
       }
     }
     if (!area) return void errores.push({ fila, motivo: 'Falta el área.' })
+    let tipo: TipoProducto = mapeo.tipoPorDefecto ?? 'herramienta'
+    if (mapeo.tipo) {
+      const crudo = (f[mapeo.tipo] ?? '').trim()
+      if (crudo !== '') {
+        const leido = leerTipo(crudo)
+        if (!leido) return void errores.push({ fila, motivo: `El tipo "${crudo}" no es válido (usa herramienta o servicio).` })
+        tipo = leido
+      }
+    }
     const previa = vistos.get(codigo)
     if (previa !== undefined) return void errores.push({ fila, motivo: `Código duplicado: ya aparece en la fila ${previa}.` })
     vistos.set(codigo, fila)
-    productos.push({ codigo, nombre, area })
+    productos.push({ codigo, nombre, area, tipo })
   })
   return { productos, errores }
 }

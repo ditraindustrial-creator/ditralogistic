@@ -3,6 +3,7 @@ import type { Repo } from '../../data/repo'
 import { lineasEntregables } from '../../dominio/entrega'
 import { diaLocal, diaSemana } from '../../dominio/fechas'
 import { resumenListo } from '../../dominio/listo'
+import { fechaHoraSantiago, resumenPlan } from '../../dominio/planificacion'
 import { armarRuta, ErrorVisita, fechaValida, ordenarParadas, recorridoDelChofer, type Confirmacion, type Parada } from '../../dominio/ruta'
 import type { Cliente, UsuarioActual } from '../../dominio/tipos'
 import Entrega from '../entrega/Entrega'
@@ -98,6 +99,9 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
                   <li key={f.trabajoId} className="flex flex-col gap-2 rounded bg-slate-50 p-3">
                     <span className="text-lg">N.º {f.numero} · {datos ? textoProductos(datos, f.trabajoId) : `${f.listas} listas`}</span>
                     {t?.guiaDespacho && <span className="text-slate-700">Guía: {t.guiaDespacho}</span>}
+                    {resumenPlan(f.plan, fechaHoraSantiago(new Date().toISOString())) && (
+                      <span className="font-semibold text-amber-800">Entrega planificada: {resumenPlan(f.plan, fechaHoraSantiago(new Date().toISOString()))}</span>
+                    )}
                   </li>
                 )
               })}

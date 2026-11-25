@@ -88,8 +88,8 @@ describe('memoryRepo: maestros', () => {
 
   it('productos: importar dos veces actualiza por código', async () => {
     const r = crearMemoryRepo()
-    expect(await r.guardarProductos([{ codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado' }])).toEqual({ creados: 1, actualizados: 0, sinCambios: 0 })
-    expect(await r.guardarProductos([{ codigo: 'A-1', nombre: 'Cuchillo chef', area: 'afilado' }])).toEqual({ creados: 0, actualizados: 1, sinCambios: 0 })
+    expect(await r.guardarProductos([{ codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado', tipo: 'herramienta' }])).toEqual({ creados: 1, actualizados: 0, sinCambios: 0 })
+    expect(await r.guardarProductos([{ codigo: 'A-1', nombre: 'Cuchillo chef', area: 'afilado', tipo: 'herramienta' }])).toEqual({ creados: 0, actualizados: 1, sinCambios: 0 })
     expect(await r.listarProductos()).toMatchObject([{ codigo: 'A-1', nombre: 'Cuchillo chef' }])
   })
 

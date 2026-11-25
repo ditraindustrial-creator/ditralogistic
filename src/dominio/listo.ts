@@ -1,5 +1,6 @@
-import type { Area, Asignacion, Cliente, Etapa, Linea, Modalidad, Movimiento, Recorrido, Trabajo } from './tipos'
+import type { Area, Asignacion, Cliente, EntregaParcial, Etapa, Linea, Modalidad, Movimiento, Recorrido, Trabajo } from './tipos'
 import { diaSemana } from './fechas'
+import { planesPorTrabajo, type PlanTrabajo } from './planificacion'
 
 /** Todo lo que hace falta para calcular el estado de la operación (entrada de `resumenListo`). */
 export interface DatosOperacion {
@@ -11,6 +12,8 @@ export interface DatosOperacion {
   recorridos: Recorrido[]
   /** Qué clientes van en qué recorridos (cliente_recorridos); un cliente puede estar en varios. */
   asignaciones: Asignacion[]
+  /** Entregas parciales planificadas (encuadernación). Opcional: sin dato = ninguna. */
+  entregasParciales?: EntregaParcial[]
 }
 
 /** Un recorrido del cliente (para mostrar "Rutas: Lun · Mié · Vie"). */
@@ -46,6 +49,8 @@ export interface FilaListo {
   rutas: RutaCliente[]
   /** Próximo día de ruta desde `hoy` (hoy cuenta); null si el cliente no tiene recorrido. */
   proximaRuta: ProximaRuta | null
+  /** Encuadernación: hora planificada del trabajo y de sus entregas parciales; undefined si no hay. */
+  plan?: PlanTrabajo
 }
 
 /** `fecha` + `n` días, en días calendario (sin horas: no le afecta el cambio de hora). */
@@ -112,6 +117,7 @@ export function resumenListo(datos: DatosOperacion, hoy: string): FilaListo[] {
     if (origen?.esFinal) a.finales -= m.cantidad
   }
 
+  const planes = planesPorTrabajo(datos.trabajos, datos.entregasParciales)
   const filas: FilaListo[] = []
   for (const t of datos.trabajos) {
     const a = acum.get(t.id)!
@@ -132,6 +138,7 @@ export function resumenListo(datos: DatosOperacion, hoy: string): FilaListo[] {
       listoDesde: a.listas > 0 ? a.listoDesde : null,
       rutas: info?.rutas ?? [],
       proximaRuta: info?.proximaRuta ?? null,
+      ...(planes.has(t.id) ? { plan: planes.get(t.id) } : {}),
     })
   }
   return filas

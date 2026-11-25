@@ -179,7 +179,9 @@ export default function Recepcion({
 
   const lista = clientes ?? []
   const sugeridos = cliente ? [] : filtrarClientes(lista, busqueda)
-  const sugerenciasProductos = productos.filter((p) => p.area === area)
+  // Afilado: al retirar solo se anota la herramienta (tipo y tamaño); el servicio lo define el taller.
+  // Encuadernación: se sugieren los trabajos de encuadernación del catálogo.
+  const sugerenciasProductos = productos.filter((p) => p.area === area && (area !== 'afilado' || p.tipo === 'herramienta'))
   const sinClientes = clientes !== null && clientes.length === 0 && !errorCarga
 
   return (
@@ -267,6 +269,9 @@ export default function Recepcion({
 
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-1 text-lg font-semibold">Líneas</legend>
+          {area === 'afilado' && (
+            <p className="text-sm text-slate-600">Anota solo la herramienta, su tipo y tamaño. El ángulo, la melladura y el servicio los define el taller.</p>
+          )}
           <datalist id="productos-sugeridos">
             {sugerenciasProductos.map((p) => (
               <option key={p.id} value={p.nombre}>{p.codigo}</option>

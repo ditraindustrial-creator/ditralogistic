@@ -1,5 +1,5 @@
 import type { Repo } from './repo'
-import type { Asignacion, Cliente, Etapa, Linea, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
+import type { Asignacion, Cliente, EntregaParcial, Etapa, Linea, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
 import { ErrorTrabajo, MODALIDADES, primeraEtapa, RECEPCION_CLAVE_USADA, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
 import { ENTREGA_CLAVE_USADA, ErrorEntrega, planificarEntrega, validarEntradaEntrega, validarTransporte } from '../dominio/entrega'
 import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
@@ -15,6 +15,8 @@ import {
   validarEtapasMovimiento,
   validarMovimiento,
 } from '../dominio/avance'
+import { ErrorPlanificacion, normalizarDetalle, validarPlan } from '../dominio/planificacion'
+import { puedeDetallar, puedePlanificar } from '../dominio/permisos'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -33,6 +35,7 @@ export interface MemoryRepoOpciones {
   asignaciones?: Asignacion[]
   productos?: Producto[]
   visitas?: Visita[]
+  entregasParciales?: EntregaParcial[]
 }
 
 const GESTION: readonly Rol[] = ['admin', 'secretaria', 'jefe_taller']
@@ -56,6 +59,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
   let asignaciones: Asignacion[] = (opciones.asignaciones ?? []).map((a) => ({ ...a }))
   const productos: Producto[] = (opciones.productos ?? []).map((p) => ({ ...p }))
   const visitas: Visita[] = (opciones.visitas ?? []).map((v) => ({ ...v }))
+  let parciales: EntregaParcial[] = (opciones.entregasParciales ?? []).map((p) => ({ ...p }))
   let siguienteId = 1
   // Claves de idempotencia ya usadas, como trabajos.clave_idempotencia y entregas_registradas (0008).
   const clavesTrabajo = new Map<string, { usuarioId: string; trabajoId: string }>()
@@ -203,6 +207,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
         clientes: clientes.map((c) => ({ ...c })),
         recorridos: recorridos.map((r) => ({ ...r })),
         asignaciones: asignaciones.map((a) => ({ ...a })),
+        entregasParciales: parciales.map((p) => ({ ...p })),
       }
     },
     suscribirCambios(alCambiar, alEstado) {
@@ -336,6 +341,39 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       const antes = asignaciones.length
       asignaciones = asignaciones.filter((a) => !(a.clienteId === clienteId && a.recorridoId === recorridoId))
       if (asignaciones.length === antes) throw new Error('No se pudo quitar el recorrido (ya no estaba asignado o no tienes permiso).')
+    },
+    // Como guardar_detalle_linea (0010): gestión o el operario del área de la línea.
+    async guardarDetalleLinea(lineaId, detalle) {
+      if (!actual) throw new ErrorPlanificacion('Debes iniciar sesión para guardar el detalle.')
+      const d = normalizarDetalle(detalle)
+      const i = lineas.findIndex((l) => l.id === lineaId)
+      const trabajo = i >= 0 ? trabajos.find((t) => t.id === lineas[i].trabajoId) : undefined
+      if (!trabajo) throw new ErrorPlanificacion('La línea no existe.')
+      if (!puedeDetallar(actual.rol, trabajo.area)) throw new ErrorPlanificacion('No tienes permiso para cambiar el detalle de esta línea.')
+      const nueva: Linea = { ...lineas[i] }
+      delete nueva.servicio
+      delete nueva.detalleTaller
+      if (d.servicio) nueva.servicio = d.servicio
+      if (d.detalle) nueva.detalleTaller = d.detalle
+      lineas[i] = nueva
+    },
+    // Como planificar_entregas (0010): gestión u operario de encuadernación; solo encuadernación; todo o nada.
+    async planificarEntregas(trabajoId, plan) {
+      if (!actual) throw new ErrorPlanificacion('Debes iniciar sesión para planificar entregas.')
+      if (!puedePlanificar(actual.rol)) throw new ErrorPlanificacion('No tienes permiso para planificar entregas.')
+      const i = trabajos.findIndex((t) => t.id === trabajoId)
+      if (i < 0) throw new ErrorPlanificacion('El trabajo no existe.')
+      if (trabajos[i].area !== 'encuadernacion') throw new ErrorPlanificacion('Solo los trabajos de encuadernación tienen hora planificada.')
+      const total = lineas.filter((l) => l.trabajoId === trabajoId).reduce((s, l) => s + l.cantidad, 0)
+      const p = validarPlan(plan, total)
+      const t: Trabajo = { ...trabajos[i] }
+      delete t.entregaPlanificada
+      if (p.entrega) t.entregaPlanificada = p.entrega
+      trabajos[i] = t
+      parciales = [
+        ...parciales.filter((x) => x.trabajoId !== trabajoId),
+        ...p.parciales.map((x) => ({ ...x, id: `parc-${siguienteId++}`, trabajoId })),
+      ]
     },
     async listarProductos() {
       return productos.map((p) => ({ ...p }))

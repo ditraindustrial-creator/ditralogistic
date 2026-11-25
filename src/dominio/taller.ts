@@ -24,6 +24,9 @@ export interface LineaTaller {
   numero: number
   clienteNombre: string
   producto: string
+  /** Servicio y detalle técnico que definió el taller (si ya lo hizo). */
+  servicio?: string
+  detalleTaller?: string
   area: Area
   urgente: boolean
   recibidoEn: string
@@ -72,6 +75,8 @@ export function lineasEnCurso(datos: DatosOperacion, areas: Area[]): LineaTaller
       numero: t.numero,
       clienteNombre: clientePorId.get(t.clienteId)?.nombre ?? 'Cliente desconocido',
       producto: l.producto,
+      ...(l.servicio ? { servicio: l.servicio } : {}),
+      ...(l.detalleTaller ? { detalleTaller: l.detalleTaller } : {}),
       area: t.area,
       urgente: t.urgente,
       recibidoEn: t.recibidoEn,

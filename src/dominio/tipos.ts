@@ -33,6 +33,20 @@ export interface Linea {
   producto: string
   cantidad: number
   nota?: string
+  /** Servicio del catálogo (o escrito a mano) que define el taller; el chofer no lo anota. */
+  servicio?: string
+  /** Detalle técnico del taller (ángulo, melladura, dientes, terminación…). */
+  detalleTaller?: string
+}
+
+/** Una entrega parcial planificada de un trabajo de encuadernación (hora de reloj de Chile). */
+export interface EntregaParcial {
+  id: string
+  trabajoId: string
+  /** 'YYYY-MM-DDTHH:mm' en hora de Chile. */
+  planificada: string
+  cantidad?: number
+  nota?: string
 }
 
 export interface Movimiento {
@@ -59,6 +73,8 @@ export interface Trabajo {
   transporte?: string
   urgente: boolean
   notas?: string
+  /** Solo encuadernación: hora planificada de entrega del trabajo completo, 'YYYY-MM-DDTHH:mm' de Chile. */
+  entregaPlanificada?: string
 }
 
 export interface Cliente {
@@ -114,4 +130,8 @@ export interface Producto {
   codigo: string
   nombre: string
   area: Area
+  /** 'herramienta' (lo que el chofer retira) o 'servicio' (lo que hace el taller). Por defecto herramienta. */
+  tipo: TipoProducto
 }
+
+export type TipoProducto = 'herramienta' | 'servicio'

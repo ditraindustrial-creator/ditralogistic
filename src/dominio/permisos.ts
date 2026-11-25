@@ -1,4 +1,4 @@
-import type { Pantalla, Rol } from './tipos'
+import type { Area, Pantalla, Rol } from './tipos'
 
 const TODAS_OPERATIVAS: Pantalla[] = ['listo', 'recepcion', 'taller', 'ruta', 'hoja_chofer', 'reporte']
 
@@ -32,4 +32,14 @@ export function esGestion(rol: Rol): boolean {
 /** Quién puede crear un cliente nuevo desde Recepción (RLS: clientes_gestion y clientes_chofer_crea). */
 export function puedeCrearClientes(rol: Rol): boolean {
   return esGestion(rol) || rol === 'chofer'
+}
+
+/** Quién completa el servicio y el detalle técnico de una línea (como guardar_detalle_linea): gestión y los operarios de esa área. */
+export function puedeDetallar(rol: Rol, area: Area): boolean {
+  return esGestion(rol) || (rol === 'operario_afilado' && area === 'afilado') || (rol === 'operario_encuadernacion' && area === 'encuadernacion')
+}
+
+/** Quién planifica las horas de entrega de encuadernación (como planificar_entregas): gestión y operarios de encuadernación. */
+export function puedePlanificar(rol: Rol): boolean {
+  return esGestion(rol) || rol === 'operario_encuadernacion'
 }

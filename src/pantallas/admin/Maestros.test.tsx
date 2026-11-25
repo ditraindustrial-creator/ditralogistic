@@ -273,4 +273,20 @@ describe('Maestros: productos', () => {
     expect(within(screen.getByRole('list', { name: 'Productos' })).getByText('Cuchillo de chef')).toBeInTheDocument()
     expect((await repo.listarProductos()).map((p) => p.area)).toEqual(['afilado', 'afilado'])
   })
+
+  it('lee la columna del tipo (herramienta o servicio) y lo muestra en la lista', async () => {
+    const repo = crearMemoryRepo()
+    render(<Maestros repo={repo} />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Productos' }))
+    await userEvent.upload(
+      screen.getByLabelText('Archivo de productos (CSV)'),
+      archivo('Código;Descripción;Tipo\r\nH-1;Cuchillo recto;herramienta\r\nS-1;Afilado recto;servicio\r\n', 'productos.csv'),
+    )
+    expect(await screen.findByLabelText(/Columna del tipo/)).toHaveValue('Tipo')
+    await userEvent.selectOptions(screen.getByLabelText('Área de todos los productos'), 'Afilado')
+    await userEvent.click(screen.getByRole('button', { name: 'Importar productos' }))
+    expect(await screen.findByText('2 productos nuevos, 0 actualizados, 0 sin cambios.')).toBeInTheDocument()
+    expect((await repo.listarProductos()).map((p) => [p.codigo, p.tipo])).toEqual([['H-1', 'herramienta'], ['S-1', 'servicio']])
+    expect(within(screen.getByRole('list', { name: 'Productos' })).getByText('S-1 · Afilado · Servicio')).toBeInTheDocument()
+  })
 })

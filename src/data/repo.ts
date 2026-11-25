@@ -4,6 +4,7 @@ import type { DatosTrabajoNuevo } from '../dominio/trabajo'
 import type { DatosOperacion } from '../dominio/listo'
 import type { ClienteImportado, ProductoImportado } from '../dominio/csv'
 import type { ClienteNuevo } from '../dominio/maestros'
+import type { DetalleTaller, PlanEntregas } from '../dominio/planificacion'
 
 export interface ResultadoGuardado {
   creados: number
@@ -90,4 +91,16 @@ export interface Repo {
    * (reintento tras una respuesta perdida). `opciones.transporte`: se anota en cada trabajo tocado.
    */
   entregarUnidades(entregas: Entrega[], documento: string, opciones?: OpcionesEntrega): Promise<void>
+
+  // ---- Detalle del taller y horas planificadas (Task 11) ----
+  /**
+   * Guarda el servicio y el detalle técnico de una línea (texto vacío = sin dato). Pueden gestión y
+   * los operarios del área de la línea. Lanza ErrorPlanificacion (en español) si no se puede.
+   */
+  guardarDetalleLinea(lineaId: string, detalle: DetalleTaller): Promise<void>
+  /**
+   * Reemplaza, todo o nada, la hora planificada de entrega de un trabajo de encuadernación y sus
+   * entregas parciales. Pueden gestión y los operarios de encuadernación. Lanza ErrorPlanificacion.
+   */
+  planificarEntregas(trabajoId: string, plan: PlanEntregas): Promise<void>
 }
