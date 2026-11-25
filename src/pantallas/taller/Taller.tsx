@@ -4,7 +4,7 @@ import { ErrorMovimiento, validarMovimiento } from '../../dominio/avance'
 import { esGestion, puedeEntregar, puedeVer } from '../../dominio/permisos'
 import type { LineaEntregable } from '../../dominio/entrega'
 import { areasDelRol, destinoPorDefecto, lineasEnCurso, origenPorDefecto, reconciliarSeleccion, type LineaTaller } from '../../dominio/taller'
-import type { Area, UsuarioActual } from '../../dominio/tipos'
+import type { Area, Producto, UsuarioActual } from '../../dominio/tipos'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import Entrega from '../entrega/Entrega'
 
@@ -54,6 +54,16 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   const [confirmacion, setConfirmacion] = useState('')
   // Mover a la etapa final es entregar: se abre el flujo de entrega (con documento) en vez de mover.
   const [entrega, setEntrega] = useState<{ lineaId: string; cantidad: number } | null>(null)
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [errorDetalle, setErrorDetalle] = useState<Record<string, string>>({})
+  const [guardandoDetalle, setGuardandoDetalle] = useState<string | null>(null)
+
+  useEffect(() => {
+    repo.listarProductos().then(
+      (p) => setProductos(p),
+      () => undefined,
+    )
+  }, [repo])
 
   const entrega_ok = puedeEntregar(usuario.rol)
   // Sacar unidades de una etapa final (corregir una entrega) es solo de gestión, igual que en la base.
@@ -163,6 +173,27 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
     } finally {
       enCurso.current = false
       setMoviendo(false)
+    }
+  }
+
+  function puedeEditarDetalle(area: Area): boolean {
+    return (
+      esGestion(usuario.rol) ||
+      (usuario.rol === 'operario_afilado' && area === 'afilado') ||
+      (usuario.rol === 'operario_encuadernacion' && area === 'encuadernacion')
+    )
+  }
+
+  async function guardarDetalle(lineaId: string, cambios: { detalleTaller?: string | null } | { servicioId?: string | null }) {
+    setGuardandoDetalle(lineaId)
+    setErrorDetalle((e) => ({ ...e, [lineaId]: '' }))
+    try {
+      await repo.actualizarDetalleLinea(lineaId, cambios)
+      await recargar()
+    } catch (e) {
+      setErrorDetalle((prev) => ({ ...prev, [lineaId]: e instanceof Error ? e.message : 'No se pudo guardar.' }))
+    } finally {
+      setGuardandoDetalle(null)
     }
   }
 
@@ -298,6 +329,55 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                   <button type="button" className={botonGrande} disabled={moviendo} onClick={() => void mover(l)}>
                     {moviendo ? 'Moviendo…' : l.etapasArea.find((e) => e.id === sel.destinoId)?.esFinal ? 'Entregar…' : 'Mover'}
                   </button>
+
+                  <div className="flex flex-col gap-3 border-t pt-3">
+                    {(() => {
+                      const linea = datos?.lineas.find((x) => x.id === l.lineaId)
+                      const deshabilitado = !puedeEditarDetalle(l.area) || guardandoDetalle === l.lineaId
+                      return (
+                        <>
+                          <label className="flex flex-col gap-1 text-lg font-semibold">
+                            Detalle del taller
+                            <textarea
+                              key={`dt-${l.lineaId}-${linea?.detalleTaller ?? ''}`}
+                              className="min-h-20 w-full rounded border p-3 text-base font-normal disabled:bg-slate-50 disabled:text-slate-400"
+                              placeholder="Ángulo, melladura, observaciones…"
+                              rows={3}
+                              disabled={deshabilitado}
+                              defaultValue={linea?.detalleTaller ?? ''}
+                              onBlur={(e) => {
+                                const actual = linea?.detalleTaller ?? ''
+                                if (e.target.value !== actual) {
+                                  void guardarDetalle(l.lineaId, { detalleTaller: e.target.value || null })
+                                }
+                              }}
+                            />
+                          </label>
+                          {l.area === 'encuadernacion' && (
+                            <label className="flex flex-col gap-1 text-lg font-semibold">
+                              Servicio
+                              <select
+                                className="min-h-12 w-full rounded border p-3 text-base font-normal disabled:bg-slate-50 disabled:text-slate-400"
+                                disabled={deshabilitado}
+                                value={linea?.servicioId ?? ''}
+                                onChange={(e) => void guardarDetalle(l.lineaId, { servicioId: e.target.value || null })}
+                              >
+                                <option value="">Sin servicio</option>
+                                {productos
+                                  .filter((p) => p.tipo === 'servicio' && p.area === 'encuadernacion')
+                                  .map((p) => (
+                                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                                  ))}
+                              </select>
+                            </label>
+                          )}
+                          {errorDetalle[l.lineaId] && (
+                            <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-700">{errorDetalle[l.lineaId]}</p>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
                 </div>
               )}
             </li>

@@ -90,4 +90,10 @@ export interface Repo {
    * (reintento tras una respuesta perdida). `opciones.transporte`: se anota en cada trabajo tocado.
    */
   entregarUnidades(entregas: Entrega[], documento: string, opciones?: OpcionesEntrega): Promise<void>
+
+  /**
+   * Actualiza el detalle técnico de una línea (detalle libre de taller y/o servicio referenciado).
+   * Solo gestión y el operario del área del trabajo. Lanza Error en español si no tiene permiso.
+   */
+  actualizarDetalleLinea(lineaId: string, cambios: { servicioId?: string | null; detalleTaller?: string | null }): Promise<void>
 }

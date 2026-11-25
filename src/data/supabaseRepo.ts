@@ -133,6 +133,7 @@ interface FilaProducto {
   codigo: string
   nombre: string
   area: string
+  tipo?: string | null
 }
 
 export function filaACliente(f: FilaCliente): Cliente {
@@ -150,7 +151,9 @@ export function filaAAsignacion(f: FilaAsignacion): Asignacion {
   return { clienteId: f.cliente_id, recorridoId: f.recorrido_id, fija: f.fija, orden: Number(f.orden) }
 }
 export function filaAProducto(f: FilaProducto): Producto {
-  return { id: f.id, codigo: f.codigo, nombre: f.nombre, area: f.area as Area }
+  const p: Producto = { id: f.id, codigo: f.codigo, nombre: f.nombre, area: f.area as Area }
+  if (f.tipo === 'herramienta' || f.tipo === 'servicio') p.tipo = f.tipo
+  return p
 }
 
 interface FilaLinea {
@@ -159,6 +162,8 @@ interface FilaLinea {
   producto: string
   cantidad: number
   nota: string | null
+  servicio_id: string | null
+  detalle_taller: string | null
 }
 interface FilaEtapa {
   id: string
@@ -175,6 +180,8 @@ const COLUMNAS_TRABAJO =
 export function filaALinea(f: FilaLinea): Linea {
   const l: Linea = { id: f.id, trabajoId: f.trabajo_id, producto: f.producto, cantidad: f.cantidad }
   if (f.nota) l.nota = f.nota
+  if (f.servicio_id) l.servicioId = f.servicio_id
+  if (f.detalle_taller) l.detalleTaller = f.detalle_taller
   return l
 }
 export function filaAEtapa(f: FilaEtapa): Etapa {
@@ -364,7 +371,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
         // Cada tabla grande se lee por páginas (PostgREST corta en 1000 filas), en paralelo.
         const [trabajos, lineas, movimientos, etapas, clientes, recorridos, asignaciones] = await Promise.all([
           leerTodas<FilaTrabajo>((d, h) => sb.from('trabajos').select(COLUMNAS_TRABAJO).order('id').range(d, h)),
-          leerTodas<FilaLinea>((d, h) => sb.from('lineas').select('id, trabajo_id, producto, cantidad, nota').order('id').range(d, h)),
+          leerTodas<FilaLinea>((d, h) => sb.from('lineas').select('id, trabajo_id, producto, cantidad, nota, servicio_id, detalle_taller').order('id').range(d, h)),
           leerTodas<FilaMovimiento>((d, h) =>
             sb.from('movimientos').select('id, linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id, creado_en').order('id').range(d, h),
           ),
@@ -556,11 +563,23 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
     async listarProductos() {
       try {
         const filas = await leerTodas<FilaProducto>((d, h) =>
-          sb.from('productos').select('id, codigo, nombre, area').order('id').range(d, h),
+          sb.from('productos').select('id, codigo, nombre, area, tipo').order('id').range(d, h),
         )
         return filas.map(filaAProducto).sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'))
       } catch {
         throw new Error('No se pudo cargar el catálogo. Revisa tu conexión.')
+      }
+    },
+    async actualizarDetalleLinea(lineaId, cambios) {
+      const { error } = await sb.rpc('actualizar_detalle_linea', {
+        p_linea_id: lineaId,
+        p_detalle_taller: cambios.detalleTaller ?? null,
+        p_servicio_id: cambios.servicioId ?? null,
+      })
+      if (error) {
+        const msg = error.message ?? ''
+        if (msg.includes('Sin permiso')) throw new Error('Sin permiso para actualizar el detalle de esta línea.')
+        throw new Error('No se pudo guardar el detalle. Revisa tu conexión.')
       }
     },
     async guardarProductos(entrantes) {

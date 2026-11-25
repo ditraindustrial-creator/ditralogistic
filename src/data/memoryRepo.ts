@@ -347,5 +347,18 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       for (const n of plan.nuevos) productos.push({ ...n, id: `prod-${siguienteId++}` })
       return { creados: plan.nuevos.length, actualizados: plan.actualizaciones.length, sinCambios: plan.sinCambios }
     },
+    async actualizarDetalleLinea(lineaId, cambios) {
+      if (!actual) throw new Error('Debes iniciar sesión.')
+      const linea = lineas.find((l) => l.id === lineaId)
+      const trabajo = linea && trabajos.find((t) => t.id === linea.trabajoId)
+      if (!linea || !trabajo) throw new Error('La línea no existe.')
+      const puedeEditar =
+        esGestion(actual) ||
+        (actual.rol === 'operario_afilado' && trabajo.area === 'afilado') ||
+        (actual.rol === 'operario_encuadernacion' && trabajo.area === 'encuadernacion')
+      if (!puedeEditar) throw new Error('Sin permiso para actualizar el detalle de esta línea.')
+      if ('detalleTaller' in cambios) linea.detalleTaller = cambios.detalleTaller ?? undefined
+      if ('servicioId' in cambios) linea.servicioId = cambios.servicioId ?? undefined
+    },
   }
 }

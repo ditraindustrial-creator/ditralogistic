@@ -33,6 +33,8 @@ export interface Linea {
   producto: string
   cantidad: number
   nota?: string
+  servicioId?: string
+  detalleTaller?: string
 }
 
 export interface Movimiento {
@@ -114,4 +116,5 @@ export interface Producto {
   codigo: string
   nombre: string
   area: Area
+  tipo?: 'herramienta' | 'servicio'
 }

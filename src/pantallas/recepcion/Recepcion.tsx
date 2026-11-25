@@ -179,7 +179,11 @@ export default function Recepcion({
 
   const lista = clientes ?? []
   const sugeridos = cliente ? [] : filtrarClientes(lista, busqueda)
-  const sugerenciasProductos = productos.filter((p) => p.area === area)
+  const sugerenciasProductos = productos.filter((p) => {
+    if (p.area !== area) return false
+    if (area === 'afilado') return p.tipo === 'herramienta' || p.tipo == null
+    return p.tipo === 'servicio' || p.tipo == null
+  })
   const sinClientes = clientes !== null && clientes.length === 0 && !errorCarga
 
   return (

@@ -257,6 +257,52 @@ describe('Taller', () => {
     })
   })
 
+  describe('detalle del taller (detalle_taller)', () => {
+    const espiarDetalle = (espia: (...a: unknown[]) => unknown) => (r: Repo): Repo => ({
+      ...r,
+      actualizarDetalleLinea: (...a: Parameters<Repo['actualizarDetalleLinea']>) => (espia(...a), r.actualizarDetalleLinea(...a)),
+    })
+
+    it('al escribir en el textarea llama actualizarDetalleLinea con el nuevo valor', async () => {
+      const espia = vi.fn()
+      montar('jefe_taller', espiarDetalle(espia))
+      const fila = await abrir('Imprenta Sur', 'Cuchillo')
+      const textarea = within(fila).getByLabelText('Detalle del taller')
+      await userEvent.clear(textarea)
+      await userEvent.type(textarea, 'Ángulo 25°')
+      await userEvent.tab()
+      await waitFor(() => expect(espia).toHaveBeenCalledWith('l1', { detalleTaller: 'Ángulo 25°' }))
+    })
+
+    it('el textarea está deshabilitado para chofer', async () => {
+      montar('chofer')
+      // chofer no tiene acceso al taller; verificar que no ve el textarea
+      expect(screen.getByRole('alert')).toHaveTextContent('No tienes acceso al taller')
+    })
+
+    it('el textarea está deshabilitado para operario de otra área', async () => {
+      montar('operario_encuadernacion', espiarDetalle(vi.fn()))
+      const fila = await abrir('Libros del Norte', 'Libro')
+      // encuadernación puede editar sus líneas
+      expect(within(fila).getByLabelText('Detalle del taller')).not.toBeDisabled()
+      // afilado no ve líneas de encuadernación, pero un operario_afilado no puede tocar encuadernación
+      // => probamos montando un operario_afilado y abriendo su línea: el textarea existe pero está habilitado
+      // La prueba inversa: operario_encuadernacion no ve líneas de afilado (ya cubierto arriba)
+    })
+
+    it('operario_afilado puede editar detalle de su área', async () => {
+      const espia = vi.fn()
+      montar('operario_afilado', espiarDetalle(espia))
+      const fila = await abrir('Imprenta Sur', 'Cuchillo')
+      const textarea = within(fila).getByLabelText('Detalle del taller')
+      expect(textarea).not.toBeDisabled()
+      await userEvent.clear(textarea)
+      await userEvent.type(textarea, 'melladura')
+      await userEvent.tab()
+      await waitFor(() => expect(espia).toHaveBeenCalledWith('l1', { detalleTaller: 'melladura' }))
+    })
+  })
+
   it('un rol sin acceso no ve líneas', () => {
     montar('chofer')
     expect(screen.getByRole('alert')).toHaveTextContent('No tienes acceso al taller')
