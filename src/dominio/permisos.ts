@@ -4,8 +4,8 @@ const TODAS_OPERATIVAS: Pantalla[] = ['listo', 'recepcion', 'taller', 'ruta', 'h
 
 const PANTALLAS_POR_ROL: Record<Rol, readonly Pantalla[]> = {
   admin: [...TODAS_OPERATIVAS, 'admin'],
-  secretaria: TODAS_OPERATIVAS,
-  jefe_taller: TODAS_OPERATIVAS,
+  secretaria: [...TODAS_OPERATIVAS, 'admin'],
+  jefe_taller: [...TODAS_OPERATIVAS, 'admin'],
   chofer: ['ruta', 'hoja_chofer', 'recepcion'],
   operario_afilado: ['listo', 'taller'],
   operario_encuadernacion: ['listo', 'taller'],

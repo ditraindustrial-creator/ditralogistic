@@ -178,6 +178,12 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
       {errorVisita && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{errorVisita}</p>}
       {!ruta && !errorCarga && !errorVisitas && <p>Cargando…</p>}
 
+      {ruta && grupos.length > 0 && !delChofer && (
+        <p className="rounded bg-amber-50 p-3 text-sm text-amber-800">
+          No se encontró un recorrido para tu nombre. Elige uno abajo.
+        </p>
+      )}
+
       {ruta && grupos.length > 1 && (
         <div role="group" aria-label="Recorrido" className="grid grid-cols-2 gap-2">
           {grupos.map((g) => (

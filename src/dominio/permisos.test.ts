@@ -18,10 +18,10 @@ describe('puedeVer', () => {
     expect(puedeVer('jefe_taller', 'reporte')).toBe(true)
     expect(puedeVer('secretaria', 'ruta')).toBe(true)
   })
-  it('solo admin ve admin', () => {
+  it('gestión ve admin, operarios y chofer no', () => {
     const roles: Rol[] = ['admin', 'secretaria', 'chofer', 'operario_afilado', 'operario_encuadernacion', 'jefe_taller']
     const quienes = roles.filter((r) => puedeVer(r, 'admin' as Pantalla))
-    expect(quienes).toEqual(['admin'])
+    expect(quienes).toEqual(['admin', 'secretaria', 'jefe_taller'])
   })
 })
 
