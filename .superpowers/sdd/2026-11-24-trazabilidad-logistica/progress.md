@@ -114,3 +114,4 @@ Task 10: minor (deferred): test de matriz completa puedeVer rol×pantalla; aviso
 Task 10: complete (commits b49eeb4..ba8887e, review clean)
 Task 11: Ruling CONFIRMADO (dueño 2026-11-25): (a) tipos de herramienta que el chofer identifica: guillotina, disco, trilateral, broca + tamaño numérico (ej. 1/2", 115, 137 = tamaños cuchillos de guillotina) → el catálogo ERP ya los codifica en el nombre del producto ("CUCHILLO GUILLOTINA 115"); recepción filtra por tipo='herramienta' para afilado y por tipo='servicio' de encuadernación para encuadernación; (b) hora planificada en encuadernación: AMBAS — `trabajos.entrega_planificada` (global) Y una hora por entrega parcial en tabla `entregas_planificadas(trabajo_id, hora, cantidad, nota?)`
 Task 11a: complete (commits ba8887e..dc087e9, tests: npx vitest run → 477/477, tsc → clean)
+Task 11b: complete (commits dc087e9..fb494ac, tests: npx vitest run → 482/482, tsc → clean)
