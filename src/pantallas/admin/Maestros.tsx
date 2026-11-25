@@ -168,7 +168,9 @@ function Importador({
           <p className="font-semibold">{resultado.resumen}</p>
           {resultado.errores.length > 0 && (
             <>
-              <p className="mt-2 text-red-700">{resultado.errores.length} filas no se importaron:</p>
+              <p className="mt-2 text-red-700">
+                {resultado.errores.length === 1 ? '1 fila no se importó:' : `${resultado.errores.length} filas no se importaron:`}
+              </p>
               <ul aria-label="Errores de importación" className="list-disc pl-6 text-red-700">
                 {resultado.errores.map((e, i) => (
                   <li key={i}>{e.fila > 0 ? `Fila ${e.fila}: ${e.motivo}` : e.motivo}</li>

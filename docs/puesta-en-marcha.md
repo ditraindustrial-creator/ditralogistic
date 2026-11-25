@@ -2,7 +2,9 @@
 
 Esta guía es para quien lanza la app por primera vez (el dueño, con ayuda de un asistente de IA si lo desea). Cada paso dice **qué debe pasar**. Si algo no coincide, no avances: ve a la sección "Si algo falla".
 
-> **Importante:** hasta hoy esta app **nunca se ha probado contra un Supabase real**. Todo el código y todo el SQL se probaron con una base PostgreSQL local y con datos simulados. Trata el primer arranque como una **prueba de verificación**: hazlo con datos de práctica y borra esos datos antes de usarla de verdad (ver paso 10).
+> **Importante:** hasta hoy esta app **nunca se ha probado contra un Supabase real**. Todo el código y todo el SQL se probaron con una base PostgreSQL local y con datos simulados. Trata el primer arranque como una **prueba de verificación**: hazlo con datos de práctica y borra esos datos antes de usarla de verdad (ver «Cierre de la prueba», al final de la Parte B).
+
+> **Los nombres de menús y botones de Supabase y Cloudflare** de esta guía se escribieron de memoria y esos paneles cambian seguido: si un nombre no coincide, busca la opción equivalente (por ejemplo "Settings" en vez de "Project Settings"). Los textos **de la app** sí se copiaron del código.
 
 Lo que necesitas: una cuenta de Supabase y una de Cloudflare (o Vercel), **a nombre de la empresa**; una cuenta de GitHub con este repositorio; un celular; y 2 a 3 horas la primera vez.
 
@@ -27,8 +29,9 @@ En **SQL Editor → New query**, pega el contenido completo de cada archivo de `
 | 5 | `0005_recepcion.sql` | Crear un trabajo con sus líneas (`crear_trabajo`) |
 | 6 | `0006_realtime.sql` | Activa las actualizaciones en vivo de `movimientos` |
 | 7 | `0007_ruta.sql` | Visitas de ruta, entregas con documento (`entregar_unidades`) |
+| 8 | `0008_ajustes_finales.sql` | Entregas solo con documento, correcciones solo de gestión, reintentos sin duplicar, transporte de encomienda |
 
-**Resultado esperado de cada uno:** "Success. No rows returned". En **Table Editor** aparecen las tablas `perfiles`, `recorridos`, `clientes`, `etapas`, `trabajos`, `lineas`, `movimientos`, `visitas`, `productos`; y la tabla `etapas` trae 9 filas (5 de afilado, 4 de encuadernación).
+**Resultado esperado de cada uno:** "Success. No rows returned". En **Table Editor** aparecen las tablas `perfiles`, `recorridos`, `clientes`, `etapas`, `trabajos`, `lineas`, `movimientos`, `visitas`, `productos`, `entregas_registradas`; y la tabla `etapas` trae 9 filas (5 de afilado, 4 de encuadernación).
 
 Alternativa para quien sepa usar la terminal: con la CLI de Supabase, `supabase link --project-ref <ref>` y `supabase db push`. No se ha probado en este repositorio (no hay `supabase/config.toml`); el SQL Editor es el camino verificado.
 
@@ -46,6 +49,10 @@ select tablename from pg_publication_tables where pubname = 'supabase_realtime';
 2. Abre `supabase/seed/primer_admin.sql`, cambia los tres valores marcados con `<<<` (correo, nombre, rol `admin`) y ejecútalo en el SQL Editor.
 
 **Resultado esperado:** al final aparece una fila con el correo, el nombre y `admin`.
+
+3. **Cerrar el registro abierto:** en **Authentication → Sign In / Providers** (o **Authentication → Settings**, según la versión del panel) desactiva **"Allow new users to sign up"** y guarda. Los usuarios los crea solo el administrador (pasos 4 y 8); con el registro abierto, cualquiera con la dirección de la app podría crearse una cuenta (sin perfil no ve datos, pero no debe poder entrar).
+
+**Resultado esperado:** la opción queda apagada. Crear usuarios desde **Add user** sigue funcionando.
 
 ### 5. Copiar las dos claves públicas del proyecto
 **Project Settings → API** (o "API Keys"):
@@ -79,32 +86,54 @@ Cloudflare: **Workers & Pages → Create → Pages → Connect to Git** → elig
 ### 8. Crear los demás usuarios
 Por cada persona: créala en Authentication → Users (con Auto Confirm) y agrega su perfil con el rol correcto (instrucciones y plantilla en `supabase/seed/primer_admin.sql`). Para la prueba de humo crea al menos: una secretaria, un chofer, un operario de afilado y un operario de encuadernación.
 
-## Parte B. Prueba de humo (15 a 20 minutos, dos dispositivos)
+## Parte B. Prueba de humo (30 a 40 minutos, dos dispositivos)
 
-Usa dos aparatos: por ejemplo un celular y un computador, o dos celulares. Los datos que crees son de práctica. Marca cada punto; si uno falla, detente y mira "Si algo falla".
+Usa dos aparatos: por ejemplo un celular y un computador, o dos celulares. Los datos que crees son de práctica. Marca cada punto; si uno falla, detente y mira "Si algo falla". Los textos entre comillas son los que muestra la app, tal cual.
+
+**Hazla un día hábil (lunes a viernes).** La Hoja de ruta muestra el recorrido del día de hoy: por eso en el punto 2 se crea un recorrido para el día de la semana de hoy. Ejemplo: si hoy es martes, "Prueba hoy" es de martes y "Prueba mañana" de miércoles (si hoy es viernes, "Prueba mañana" es de lunes, que es lo que muestra "Ruta de mañana").
+
+Archivos de práctica (guárdalos como `.csv` con un editor de texto o desde Excel):
+
+```
+nombre;rut;contacto;direccion
+Cliente Prueba A;11.111.111-1;Ana;Calle 1
+Cliente Prueba B;22.222.222-2;Beto;Calle 2
+Cliente Prueba C;33.333.333-3;Carla;Calle 3
+```
+
+```
+codigo;nombre;area
+CU-20;Cuchillo;afilado
+DI-10;Disco;afilado
+LI-01;Libro tapa dura;encuadernacion
+```
+
+Los números de trabajo que se citan (N.º 1, 2, 3) suponen una base sin trabajos; si ya hubo intentos, verás otros números (nunca se repiten, puede haber saltos).
 
 | # | Quién | Qué hacer | Resultado esperado |
 |---|---|---|---|
-| 1 | Admin | Entrar con correo y clave. | Saluda "Hola, <nombre>". El menú muestra: Recepción, Taller / Producción, Ruta de mañana, Hoja de ruta, Reporte diario, Administración; abajo "Qué hay listo". |
-| 2 | Admin | Administración → Recorridos: crear "Lunes Norte" (lunes, camioneta 1). | Aparece en la lista. |
-| 3 | Admin | Administración → Clientes: crear/importar clientes. Importa un CSV pequeño de 3 filas (columnas `nombre;rut;contacto;direccion`, separador `;`). Vuelve a importarlo. | La primera vez informa 3 clientes nuevos; la segunda informa 0 nuevos y 3 sin cambios (no duplica). Un RUT repetido o mal escrito aparece como error de esa fila, sin detener las demás. |
-| 4 | Admin | Asignar a un cliente el recorrido "Lunes Norte". Importar 3 productos en Productos. | Se guarda y al recargar sigue ahí. |
-| 5 | Secretaria | Entrar. Revisar el menú. | Ve todo lo operativo, **sin** Administración. |
-| 6 | Secretaria | Recepción: crear un trabajo de afilado para un cliente, con 2 líneas (ej. 6 cuchillos y 4 discos). | Muestra "Trabajo N.º ... guardado"; el trabajo aparece en Taller con todas las unidades en "Recibido". |
-| 7 | Chofer | Entrar. | El menú empieza con "Hoja de ruta" y solo tiene Ruta de mañana, Hoja de ruta y Recepción. **No** ve Taller, Reporte ni Administración. |
-| 8 | Chofer | Recepción (retiro en terreno): crear un trabajo de encuadernación para un cliente, con 1 línea de 10 unidades. | Se crea; queda como entrada "ruta propia". |
-| 9 | Operario de afilado | Entrar. En Taller mover 3 unidades de una línea de "Recibido" a la etapa siguiente; luego 3 hasta "Listo". | Solo ve trabajos de afilado (no los de encuadernación). Intentar mover más unidades de las que hay en la etapa da un mensaje claro y no cambia nada. |
-| 10 | Admin en el otro dispositivo | Mantener abierta "Qué hay listo" mientras el operario mueve unidades a "Listo". | **Sin recargar**, en pocos segundos aparece el cliente con "3 de 6 listas" y la hora. (Prueba de Realtime.) |
-| 11 | Operario | Revisar el menú y buscar cómo entregar. | Solo ve "Qué hay listo" y "Taller". No hay botón de entrega ni Ruta ni Hoja de ruta. |
-| 12 | Secretaria | Ruta de mañana (día siguiente hábil; si es fin de semana, el lunes). | Muestra, agrupado por recorrido, los clientes con lo que está listo; hay una sección "Por encomienda". Se puede marcar la visita confirmada (sí / no / sin respuesta) y agregar una parada extra. |
-| 13 | Chofer | Hoja de ruta: abrir la parada del cliente, marcar la visita y **entregar** las 3 unidades listas con un número de documento (ej. `G-1001`). | Pide el N.º de documento (guía o factura) y muestra "Entrega registrada ... Documento G-1001"; "Qué hay listo" ahora muestra 0 listas para ese cliente y el trabajo queda con 3 entregadas, 3 por entregar. |
-| 14 | Chofer | Intentar entregar más de lo que hay listo (o dos veces lo mismo, desde dos aparatos). | Mensaje claro; nunca se entrega más de lo listo. |
-| 15 | Secretaria | Crear (Recepción) un trabajo con salida "Encomienda", moverlo a "Listo" en Taller y, en Ruta de mañana, sección "Por encomienda", usar "Despachar por encomienda" con un N.º de documento. | Se registra el despacho con el documento; las unidades pasan a Entregado y salen de "Qué hay listo". |
-| 16 | Jefe de taller o secretaria | Reporte diario (fecha de hoy). | Muestra secciones Listo hoy / En producción / Por entregar con cantidades y horas coherentes con lo que se hizo. |
-| 17 | Cualquiera con acceso | En Reporte diario pulsar **Imprimir** (o Ctrl+P). | La vista previa sale limpia: sin botones "Salir", "Menú" ni "Imprimir". |
-| 18 | Operario de encuadernación | Entrar y abrir Taller. | Solo ve trabajos de encuadernación. |
-| 19 | Todos | Cerrar sesión y entrar de nuevo; cerrar y reabrir la app instalada. | Vuelve a la sesión o pide clave; nunca muestra datos sin iniciar sesión. |
-| 20 | Admin | Revisar **Authentication → Users** y la tabla `movimientos`. | Cada movimiento registra el usuario correcto y la hora. |
+| 1 | Admin | Entrar con correo y clave. | Saluda "Hola, <nombre>". El menú (botones en filas) muestra: Recepción, Taller / Producción, Ruta de mañana, Hoja de ruta, Reporte diario, Administración; debajo, sin bajar la pantalla, el título "Qué hay listo" y "No hay trabajos en curso que coincidan con los filtros." |
+| 2 | Admin | Administración → pestaña **Recorridos**: crear "Prueba hoy" (Día = el día de la semana de hoy, Camioneta "Camioneta 1", sin marcar Lejano) → "Guardar recorrido". Crear "Prueba mañana" (Día = el próximo día hábil, Camioneta "Camioneta 2", **marcar Lejano**). | Ambos aparecen en la lista de recorridos. |
+| 3 | Admin | Pestaña **Clientes** → "Archivo de clientes (CSV)": elegir el archivo de clientes de arriba; las columnas se sugieren solas → "Importar clientes". Luego elegir **el mismo archivo** otra vez e importar. | La primera vez: "3 clientes nuevos, 0 actualizados, 0 sin cambios."; la segunda: "0 clientes nuevos, 0 actualizados, 3 sin cambios." (no duplica). Si agregas una fila con RUT `abc`, sale "1 fila no se importó:" y "Fila 5: El RUT "abc" no es válido." y las demás igual se importan. |
+| 4 | Admin | En la lista de clientes: "Recorrido de Cliente Prueba A" → "Prueba hoy (…)"; "Recorrido de Cliente Prueba B" → "Prueba mañana (…, lejano)". Pestaña **Productos**: importar el archivo de productos. | Se guardan y al recargar la página siguen ahí. Productos: "3 productos nuevos, 0 actualizados, 0 sin cambios." |
+| 5 | Secretaria | Entrar. Revisar el menú. | Recepción, Taller / Producción, Ruta de mañana, Hoja de ruta, Reporte diario y abajo "Qué hay listo"; **sin** Administración. |
+| 6 | Secretaria | **Recepción**: en "Cliente" escribir `prueba a` y tocar "Cliente Prueba A". Área "Afilado". En "¿Cómo llegó?" elegir **"Ruta propia (retiro)"** (así sale por la camioneta; con "Lo trajo el cliente" iría a "Retiran en mostrador"). Línea 1: `Cuchillo`, 6; "Agregar línea"; línea 2: `Disco`, 4 → "Guardar trabajo". | "Trabajo N.º 1 guardado". En Taller / Producción aparecen "Cuchillo · 6" con "Recibido 6" y "Disco · 4" con "Recibido 4". En "Qué hay listo", bajo "Prueba hoy · <día>": "Cliente Prueba A", "0 de 10 listas", "Aún no hay unidades listas". |
+| 7 | Secretaria | **Cliente nuevo**: "Recibir otro trabajo"; en "Cliente" escribir `Cliente Prueba D`. Tocar **"Cliente nuevo"**, escribir RUT `44.444.444-4` → "Guardar cliente". Luego tocar "Cambiar cliente" → "Cliente nuevo" otra vez, con nombre `Repetido` y RUT `11.111.111-1` → "Guardar cliente". | Con la búsqueda vacía de resultados sale "No hay clientes con ese nombre o RUT."; el formulario trae el nombre ya escrito; al guardar, el cliente queda elegido (con "Cambiar cliente"). Con el RUT repetido: "Ya existe un cliente con ese RUT. Búscalo por nombre o RUT en vez de crearlo de nuevo." (No guardes trabajo aquí: toca "Cancelar".) |
+| 8 | Chofer | Entrar. | Menú: "Hoja de ruta" (primero), "Recepción", "Ruta de mañana". **No** ve Taller, Reporte, Administración ni "Qué hay listo". |
+| 9 | Chofer | **Recepción** (retiro en terreno): cliente "Cliente Prueba C", Área "Encuadernación"; "Ruta propia (retiro)" ya viene marcado. Línea: `Libro tapa dura`, 10 → "Guardar trabajo". | "Trabajo N.º 2 guardado". |
+| 10 | Operario de afilado | Entrar. Taller: tocar "Cuchillo · 6"; Cantidad 3 → "Mover". Tocar la línea otra vez; en "Desde" elegir "En taller (3)"; en "Pasar a" elegir "Listo" → "Mover". Probar también Cantidad 9 desde "Recibido (3)". | Solo ve trabajos de afilado (no el "Libro tapa dura"). Mensajes: "3 unidades pasaron a En taller" y "3 unidades pasaron a Listo". Con 9: "Solo hay 3 unidades en esta etapa; no se pueden mover 9." y nada cambia. |
+| 11 | Admin en el otro dispositivo | Mantener abierta la pantalla de inicio ("Qué hay listo") mientras el operario mueve unidades a "Listo" (punto 10). | **Sin recargar**, en pocos segundos "Cliente Prueba A" muestra "3 de 10 listas" y "Listo desde hoy HH:MM". (Prueba de Realtime.) |
+| 12 | Operario de afilado | Revisar el menú; en Taller abrir "Cuchillo · 6". | Menú: solo "Taller / Producción" y abajo "Qué hay listo". En "Pasar a" no aparece "Entregado" y se lee "Solo secretaría, jefe de taller o chofer registran entregas." No hay Ruta ni Hoja de ruta. |
+| 13 | Secretaria | **Ruta de mañana** (la fecha viene puesta en el próximo día hábil). | "No hay entregas por ruta para esta fecha." (lo listo es de "Prueba hoy") y "Hay 1 trabajo listo para otros días de ruta (no entra en esta fecha)." Sección **"Pasar a retirar (1)"** plegada, con "Clientes del recorrido sin nada que entregar · 1 por confirmar." → "Mostrar": "Prueba mañana · Camioneta 2", "Cliente Prueba B", "Visita: Sin respuesta", botones Sí / No / Sin respuesta. Tocar **"Sí"**: queda marcado y desaparece "1 por confirmar". "Agregar visita extra" → "Cliente Prueba C", nota `Retira cheques` → "Agregar": "Visita agregada: Cliente Prueba C" y aparece en "Pasar a retirar (2)" bajo "Visitas extra" con "Nota: Retira cheques". |
+| 14 | Chofer | **Hoja de ruta** (fecha de hoy): tarjeta "Cliente Prueba A". Tocar "Sí" en la visita. Tocar **"Entregar"**: la cantidad de Cuchillo viene en 3; en "N° de documento (guía o factura)" escribir `G-1001` → "Entregar" → "Listo". | "Todo lo listo: Cuchillo 3". La visita queda en "Sí". "Entrega registrada: 3 unidades · Documento G-1001". La tarjeta pasa a "Pasar a retirar (1)". En "Qué hay listo": "0 de 7 listas", "Aún no hay unidades listas", "3 entregadas · 10 en el pedido". |
+| 15 | Operario + chofer (dos aparatos) | El operario abre "Disco · 4", elige "Pasar a: Listo", Cantidad 2 → "Mover". En **dos aparatos** con Hoja de ruta abierta (chofer, y secretaria o jefe), tocar "Entregar" en "Cliente Prueba A" a la vez, con documentos `G-1002` y `G-1003`. | Un aparato registra "Entrega registrada: 2 unidades · Documento G-1002" (o G-1003). El otro muestra "«Disco» tiene 0 unidades listas; no se pueden entregar 2 (faltan 2)." o, si ya se actualizó, "No hay unidades listas para entregar.". Nunca se entrega más de lo listo. "Qué hay listo": "0 de 5 listas", "5 entregadas · 10 en el pedido". |
+| 16 | Secretaria y operario | **Corrección solo de gestión**: la secretaria abre en Taller "Cuchillo · 6"; el operario abre la misma línea. (No muevas nada.) | La secretaria ve "Desde" con "Recibido (3)" y "Entregado (3)" (puede devolver unidades entregadas por error). El operario no ve "Desde" ni "Entregado (3)" como origen. |
+| 17 | Secretaria | **Encomienda**: Recepción → "Cliente Prueba D", Afilado, "¿Cómo llegó?" = **"Encomienda"**, línea `Disco` 2 → "Guardar trabajo". En Taller abrir la línea "Disco · 2" de "Cliente Prueba D", "Pasar a: Listo" → "Mover". En Ruta de mañana, sección **"Por encomienda"**, tocar **"Despachar"**; documento `G-2001` y "Transporte (empresa y N° de guía de transporte, opcional)" `Starken 123456` → "Entregar". | "Trabajo N.º 3 guardado". El panel se titula "Despachar por encomienda". "Entrega registrada: 2 unidades · Documento G-2001 · Transporte Starken 123456"; al tocar "Listo" la sección "Por encomienda" desaparece y el trabajo sale de "Qué hay listo". En Table Editor → `trabajos`, el N.º 3 tiene `guia_despacho` = `G-2001` y `transporte` = `Starken 123456`. |
+| 18 | Operario de encuadernación | Entrar y abrir Taller: "Libro tapa dura · 10": pasar 7 de "Recibido" a "En producción"; luego, "Desde" "En producción (7)", pasar 3 a "Terminado". | Solo ve trabajos de encuadernación. "7 unidades pasaron a En producción" y "3 unidades pasaron a Terminado". |
+| 19 | Jefe de taller o secretaria | **Reporte diario** (fecha de hoy). | "Listo hoy": Cliente Prueba C · Trabajo N.º 2 · Libro tapa dura · 3 unidades, con la hora. "En producción": 4 unidades. "Por entregar": 3 unidades. "Recién recibido": 3 unidades. (El reporte es solo de encuadernación.) |
+| 20 | Cualquiera con acceso | En Reporte diario pulsar **Imprimir** (o Ctrl+P). Lo mismo en Ruta de mañana. | La vista previa sale limpia: sin "Salir", "← Menú" ni "Imprimir". En la ruta, la lista "Pasar a retirar" sale **completa** aunque en pantalla esté plegada. |
+| 21 | Todos | Cerrar sesión y entrar de nuevo; cerrar y reabrir la app instalada. | Vuelve a la sesión o pide clave; nunca muestra datos sin iniciar sesión. |
+| 22 | Admin | Revisar **Authentication → Users** y la tabla `movimientos` (Table Editor). | Cada movimiento registra el usuario correcto y la hora. Hay un movimiento por cada paso hecho; ninguno repetido. |
 
 **Cierre de la prueba:**
 
@@ -113,10 +142,10 @@ Usa dos aparatos: por ejemplo un celular y un computador, o dos celulares. Los d
 En el SQL Editor:
 
 ```sql
-truncate movimientos, lineas, trabajos, visitas restart identity;
+truncate movimientos, lineas, trabajos, visitas, entregas_registradas restart identity;
 ```
 
-Esto vacía **exactamente** `movimientos`, `lineas`, `trabajos` y `visitas` (los trabajos de práctica y su historial) y reinicia el contador de N.º de trabajo en 1. **No toca** `perfiles` (usuarios), `clientes`, `recorridos`, `productos` ni `etapas`; se verificó contra las claves foráneas de las migraciones y se probó en la base local. Los clientes y productos de práctica, si los hay, bórralos a mano en Administración o en el Table Editor.
+Esto vacía **exactamente** `movimientos`, `lineas`, `trabajos`, `visitas` y `entregas_registradas` (los trabajos de práctica, su historial y las claves de sus entregas) y reinicia el contador de N.º de trabajo en 1. **No toca** `perfiles` (usuarios), `clientes`, `recorridos`, `productos` ni `etapas`; se verificó contra las claves foráneas de las migraciones y se probó en la base local. Los clientes y productos de práctica, si los hay, bórralos a mano en Administración o en el Table Editor.
 
 ## Si algo falla
 
@@ -124,7 +153,17 @@ Esto vacía **exactamente** `movimientos`, `lineas`, `trabajos` y `visitas` (los
 
 **Entro, pero la app no muestra nada o dice que no tienes permisos.** Casi seguro falta la fila en `perfiles` (paso 4/8). Comprueba con `select u.email, p.rol from perfiles p join auth.users u on u.id = p.usuario_id;`. Si el correo no aparece, ejecuta de nuevo el insert de `supabase/seed/primer_admin.sql`.
 
-**Mensaje de "permiso denegado" / "row-level security" / "new row violates row-level security policy" al guardar.** Es una regla de acceso (RLS) actuando. Primero verifica que el usuario tenga el rol correcto (arriba). Si el rol es correcto y la acción es legítima, es un **error nuestro**: copia el mensaje completo, indica qué usuario (rol) hacía qué, y entrégaselo al asistente de IA junto con `supabase/migrations/0001_esquema.sql` y `0007_ruta.sql`; las políticas de RLS están ahí. No desactives RLS "para que funcione": dejaría los datos abiertos a cualquiera con la clave pública.
+**La app dice "No tienes permiso…" en una acción que ese rol sí debería poder hacer.** La app traduce los errores técnicos; el mensaje original se ve en Supabase → **Logs** (API / Postgres) o en el navegador del computador (F12 → Red → la respuesta en rojo). Hay dos casos distintos:
+
+- **`permission denied for table <tabla>`** (código 42501): **faltan los permisos de tabla** (grants) del rol `authenticated`; no es una regla RLS. Supabase los da por defecto en el esquema `public`; si se perdieron, ejecuta en el SQL Editor:
+  ```sql
+  grant usage on schema public to authenticated;
+  grant select, insert, update, delete on all tables in schema public to authenticated;
+  grant usage, select on all sequences in schema public to authenticated;
+  ```
+- **`new row violates row-level security policy for table <tabla>`** (o "row-level security"): es una regla de acceso (RLS) actuando; sigue el párrafo siguiente.
+
+**Mensaje de "permiso denegado" / "row-level security" / "new row violates row-level security policy" al guardar.** Es una regla de acceso (RLS) actuando. Primero verifica que el usuario tenga el rol correcto (arriba). Si el rol es correcto y la acción es legítima, es un **error nuestro**: copia el mensaje completo, indica qué usuario (rol) hacía qué, y entrégaselo al asistente de IA junto con `supabase/migrations/0001_esquema.sql`, `0007_ruta.sql` y `0008_ajustes_finales.sql`; las políticas de RLS están ahí. No desactives RLS "para que funcione": dejaría los datos abiertos a cualquiera con la clave pública.
 
 **Lista vacía aunque hay datos (por rol).** Los operarios solo ven su área; los choferes solo lo que corresponde a su ruta. Compara con el rol que corresponde.
 
@@ -136,15 +175,48 @@ Esto vacía **exactamente** `movimientos`, `lineas`, `trabajos` y `visitas` (los
 
 **La app instalada no se actualiza tras un cambio.** Cierra la app por completo y ábrela dos veces (la actualización se aplica sola al volver a abrir).
 
+## Cómo corregir un error
+
+La app **no tiene "anular"**: nada se borra, todo queda en el historial con usuario y hora. Para corregir se usan estos caminos (solo **gestión**: secretaria, jefe de taller o administrador).
+
+**1. Un trabajo recibido con datos equivocados (cantidad o cliente).** No se puede editar ni borrar. Se "cierra" y se recibe de nuevo bien:
+1. En **Taller / Producción**, abre cada línea del trabajo equivocado y pasa **todas** sus unidades a la etapa "Listo" (o "Terminado" en encuadernación), con "Desde" cada etapa donde haya unidades.
+2. Con "Desde: Listo" elige "Pasar a: Entregado" → **"Entregar…"** y en "N° de documento" escribe **`ANULADO`** → "Entregar". Repite en cada línea.
+3. Recibe el trabajo correcto en Recepción.
+
+Qué queda: el trabajo equivocado figura como **entregado completo con el documento `ANULADO`**; sale de "Qué hay listo", del Taller y de la ruta. **No se puede deshacer** (el historial no se borra) y el número de trabajo no se reutiliza. Efecto secundario: en el Reporte diario de encuadernación de ese día esas unidades cuentan en "Listo hoy". Para ver todos los trabajos anulados, en el SQL Editor:
+
+```sql
+select t.numero, c.nombre as cliente, t.recibido_en::date as recibido, t.guia_despacho
+  from trabajos t join clientes c on c.id = t.cliente_id
+ where t.guia_despacho ilike '%ANULADO%'
+ order by t.numero;
+```
+
+**2. Una entrega equivocada (más unidades, otro trabajo, número de documento errado).**
+- Si a esa línea **aún le quedan unidades en el taller**, se ve en Taller: gestión la abre, elige **"Desde: Entregado (N)"**, "Pasar a: Listo" y la cantidad → "Mover". Las unidades vuelven a estar listas para entregarse bien. Operarios y choferes no tienen esta opción (la base también lo impide).
+- Si la línea ya estaba **entregada completa**, ya no aparece en Taller. Devuélvela a "listo" desde el SQL Editor (cambia `<N>`, `'<producto>'` y `<cantidad>`; queda registrado a nombre de un administrador):
+  ```sql
+  insert into movimientos (linea_id, cantidad, etapa_origen_id, etapa_destino_id, usuario_id)
+  select l.id, <cantidad>,
+         (select e.id from etapas e where e.area = t.area and e.es_final order by e.orden limit 1),
+         (select e.id from etapas e where e.area = t.area and e.es_listo order by e.orden limit 1),
+         (select p.usuario_id from perfiles p where p.rol = 'admin' limit 1)
+    from lineas l join trabajos t on t.id = l.trabajo_id
+   where t.numero = <N> and l.producto = '<producto>';
+  ```
+  La base no deja devolver más unidades de las que están entregadas.
+- El número de documento ya anotado en la guía de despacho **no lo puede cambiar el chofer** (solo agregar números). Gestión lo corrige en Table Editor → `trabajos` → `guia_despacho`.
+
 ## Lo que NUNCA se ha probado contra un Supabase real
 
 Trata esto como lista de verificación del primer día:
 
-1. **Las reglas de acceso (RLS) en la práctica.** Se probaron en PostgreSQL local simulando `auth.uid()` y roles; en Supabase intervienen JWT reales, los roles `anon`/`authenticated` y PostgREST. Los puntos 5, 7, 9, 11 y 18 de la prueba de humo los ejercitan.
-2. **La forma de lo que devuelven `crear_trabajo` y `entregar_unidades` a través de PostgREST** (`rpc`): la app asume cierta forma de respuesta; solo se probó con simulaciones de `supabase-js`. Puntos 6, 8, 13 y 15.
-3. **La entrega en vivo de Realtime** (que el cambio llegue a otro dispositivo y que RLS filtre los eventos). Punto 10.
+1. **Las reglas de acceso (RLS) en la práctica.** Se probaron en PostgreSQL local simulando `auth.uid()` y roles; en Supabase intervienen JWT reales, los roles `anon`/`authenticated` y PostgREST. Los puntos 5, 7, 8, 10, 12, 16 y 18 de la prueba de humo los ejercitan.
+2. **La forma de lo que devuelven `crear_trabajo` y `entregar_unidades` a través de PostgREST** (`rpc`, ahora con la clave de idempotencia y el transporte): la app asume cierta forma de respuesta; solo se probó con simulaciones de `supabase-js`. Puntos 6, 9, 14, 15 y 17.
+3. **La entrega en vivo de Realtime** (que el cambio llegue a otro dispositivo y que RLS filtre los eventos). Punto 11.
 4. **El tope de filas por consulta (1000 en Supabase).** La app lee por páginas, pero esa paginación solo se probó con simulaciones; sólo se nota con más de 1000 filas (meses de uso). Si "Qué hay listo" o el Reporte parecen "perder" datos antiguos al crecer el uso, sospecha de esto.
-5. **El comportamiento de `upsert` al importar** clientes y productos (que actualice por RUT / código sin duplicar). Punto 3.
+5. **El comportamiento de `upsert` al importar** clientes y productos (que actualice por RUT / código sin duplicar), y el upsert de visitas extra sin nota (que no borre la nota anterior). Puntos 3 y 13. También **"Cliente nuevo" con RLS real** (inserción de gestión y chofer, RUT repetido traducido): punto 7.
 6. **Las migraciones en el motor de Supabase** (versión de Postgres, extensiones, publicación `supabase_realtime`): probadas en PostgreSQL 16 local con stubs.
 7. **Instalación real en iPhone (Safari) y en un celular físico.** Solo se verificó con Chromium automatizado que el manifest, los íconos y el service worker existen y cargan.
 8. **El despliegue en Cloudflare Pages / Vercel** y la configuración de variables.

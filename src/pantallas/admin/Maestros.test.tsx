@@ -50,6 +50,7 @@ describe('Maestros: clientes', () => {
     await userEvent.selectOptions(screen.getByLabelText('Columna del RUT'), 'RUT')
     await userEvent.click(screen.getByRole('button', { name: 'Importar clientes' }))
     expect(await screen.findByText(/El RUT "abc" no es válido/)).toBeInTheDocument()
+    expect(screen.getByText('1 fila no se importó:')).toBeInTheDocument()
     // Se corrige el archivo en Excel y se elige de nuevo con el mismo nombre.
     await userEvent.upload(input, archivo('Nombre;RUT\nUno;1-9\n'))
     await userEvent.selectOptions(await screen.findByLabelText('Columna del nombre'), 'Nombre')
