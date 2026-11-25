@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { crearMemoryRepo } from './data/memoryRepo'
@@ -31,6 +31,21 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: 'Agregar visita extra' })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { name: 'Ruta de mañana' })).toHaveLength(1)
     expect(screen.queryByText('Próximamente.')).not.toBeInTheDocument()
+  })
+
+  it('en el inicio de gestión el menú es compacto (botones en filas, al menos 48 px) y "Qué hay listo" va justo después', async () => {
+    const repo = crearMemoryRepo({ usuario: { id: 'u2', nombre: 'Ana', rol: 'admin' } })
+    render(<App repo={repo} />)
+    const menu = await screen.findByRole('navigation', { name: 'Menú' })
+    expect(menu).toHaveClass('flex-wrap')
+    const botones = within(menu).getAllByRole('button')
+    expect(botones).toHaveLength(6)
+    for (const b of botones) {
+      expect(b).toHaveClass('min-h-12') // 48 px: sigue siendo cómodo para el dedo
+      expect(b).not.toHaveClass('p-5') // antes: botones de ancho completo con mucho relleno, Listo quedaba bajo el pliegue
+    }
+    const listo = screen.getByRole('heading', { name: 'Qué hay listo' })
+    expect(menu.compareDocumentPosition(listo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('el admin ve Administración', async () => {

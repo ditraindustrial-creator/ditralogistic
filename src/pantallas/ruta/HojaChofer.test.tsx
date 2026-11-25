@@ -56,6 +56,8 @@ function montar(opciones: { rol?: Rol; envolver?: (r: Repo) => Repo; visitas?: V
 }
 
 const tarjeta = async (cliente: string) => (await screen.findByRole('heading', { name: cliente })).closest('li')!
+const mostrarRetirar = async () =>
+  within((await screen.findByRole('heading', { name: /^Pasar a retirar/ })).closest('section')!).getByRole('button', { name: /Mostrar|Ocultar/ })
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -75,6 +77,14 @@ describe('HojaChofer', () => {
       vi.setSystemTime(new Date('2026-11-25T02:30:00Z'))
       montar()
       expect(await screen.findByLabelText('Fecha')).toHaveValue('2026-11-24')
+    })
+    it('si la app queda abierta hasta el día siguiente, al volver a ella la fecha pasa a hoy', async () => {
+      montar()
+      expect(await screen.findByLabelText('Fecha')).toHaveValue(FECHA)
+      vi.setSystemTime(new Date('2026-11-25T12:00:00Z'))
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+      fireEvent(document, new Event('visibilitychange'))
+      await waitFor(() => expect(screen.getByLabelText('Fecha')).toHaveValue('2026-11-25'))
     })
     it('si el chofer tiene varios recorridos ese día, elige cuál ver (arranca en el primero)', async () => {
       montar()
@@ -116,11 +126,51 @@ describe('HojaChofer', () => {
       ] })
       const c3 = await tarjeta('Cliente Costa')
       await waitFor(() => expect(c3).toHaveTextContent('Visita: No confirmada'))
+      await userEvent.click(await mostrarRetirar())
       const c4 = await tarjeta('Confirmado Sin Nada')
       expect(c4).toHaveTextContent('Visita: Confirmada')
       expect(c4).toHaveTextContent('Sin unidades listas')
       expect(within(c4).queryByRole('button', { name: /^Entregar a/ })).not.toBeInTheDocument()
       expect(within(c4).getByRole('button', { name: 'Registrar retiro de Confirmado Sin Nada' })).toBeInTheDocument()
+    })
+  })
+
+  describe('marcar la visita', () => {
+    it('el chofer marca la visita de una parada (Sí / No / Sin respuesta) y queda guardada', async () => {
+      const marcar = vi.fn()
+      const repo = montar({ dosRecorridos: false, envolver: (r) => ({ ...r, marcarVisita: (...a) => (marcar(...a), r.marcarVisita(...a)) }) })
+      const c1 = await tarjeta('Imprenta Sur')
+      const grupo = within(c1).getByRole('radiogroup', { name: 'Visita Imprenta Sur' })
+      expect(within(grupo).getByLabelText('Sin respuesta')).toBeChecked()
+      await userEvent.click(within(grupo).getByLabelText('Sí'))
+      expect(marcar).toHaveBeenCalledWith(FECHA, 'c1', 'si')
+      await waitFor(() => expect(within(grupo).getByLabelText('Sí')).toBeChecked())
+      expect(await repo.listarVisitas(FECHA)).toEqual([expect.objectContaining({ clienteId: 'c1', confirmada: 'si' })])
+    })
+
+    it('un rechazo (p. ej. un día pasado) se muestra en español y no cambia la marca', async () => {
+      montar({ dosRecorridos: false, envolver: (r) => ({ ...r, marcarVisita: () => Promise.reject(new Error('Failed to fetch')) }) })
+      const grupo = within(await tarjeta('Imprenta Sur')).getByRole('radiogroup', { name: 'Visita Imprenta Sur' })
+      await userEvent.click(within(grupo).getByLabelText('No'))
+      const alerta = await screen.findByRole('alert')
+      expect(alerta).toHaveTextContent('No se pudo guardar la visita. Revisa tu conexión e inténtalo de nuevo.')
+      expect(within(grupo).getByLabelText('Sin respuesta')).toBeChecked()
+    })
+  })
+
+  describe('pasar a retirar', () => {
+    it('muestra plegados los clientes de la ruta sin nada que entregar; se abren y se marcan igual', async () => {
+      const marcar = vi.fn()
+      montar({ dosRecorridos: false, envolver: (r) => ({ ...r, marcarVisita: (...a) => (marcar(...a), r.marcarVisita(...a)) }) })
+      const boton = await mostrarRetirar()
+      expect(boton.closest('section')!).toHaveTextContent('Pasar a retirar (1)')
+      expect(screen.queryByRole('heading', { name: 'Confirmado Sin Nada' })).not.toBeInTheDocument()
+      await userEvent.click(boton)
+      const c4 = await tarjeta('Confirmado Sin Nada')
+      expect(c4).toHaveTextContent('Sin unidades listas')
+      expect(within(c4).getByRole('button', { name: 'Registrar retiro de Confirmado Sin Nada' })).toBeInTheDocument()
+      await userEvent.click(within(c4).getByLabelText('No'))
+      expect(marcar).toHaveBeenCalledWith(FECHA, 'c4', 'no')
     })
   })
 
@@ -136,7 +186,7 @@ describe('HojaChofer', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Entregar' }))
       expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 3 unidades · Documento 4521')
       expect(espia).toHaveBeenCalledTimes(1)
-      expect(espia).toHaveBeenCalledWith([{ lineaId: 'l2', cantidad: 3 }], '4521')
+      expect(espia).toHaveBeenCalledWith([{ lineaId: 'l2', cantidad: 3 }], '4521', { clave: expect.any(String) })
       await userEvent.click(screen.getByRole('button', { name: 'Listo' }))
       await waitFor(async () => expect(await tarjeta('Libros del Norte')).toHaveTextContent('Sierra 1'))
       expect(await tarjeta('Libros del Norte')).toHaveTextContent('Guía: 4521')

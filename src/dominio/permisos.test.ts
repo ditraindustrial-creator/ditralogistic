@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { puedeEntregar, puedeVer } from './permisos'
+import { esGestion, puedeCrearClientes, puedeEntregar, puedeVer } from './permisos'
 import type { Pantalla, Rol } from './tipos'
 
 describe('puedeVer', () => {
@@ -29,5 +29,15 @@ describe('puedeEntregar', () => {
   it('solo gestión y chofer, como entregar_unidades en la base', () => {
     for (const r of ['admin', 'secretaria', 'jefe_taller', 'chofer'] as const) expect(puedeEntregar(r)).toBe(true)
     for (const r of ['operario_afilado', 'operario_encuadernacion'] as const) expect(puedeEntregar(r)).toBe(false)
+  })
+})
+
+describe('esGestion y puedeCrearClientes', () => {
+  const roles: Rol[] = ['admin', 'secretaria', 'jefe_taller', 'chofer', 'operario_afilado', 'operario_encuadernacion']
+  it('gestión = admin, secretaria y jefe de taller (como es_gestion() en la base)', () => {
+    expect(roles.filter(esGestion)).toEqual(['admin', 'secretaria', 'jefe_taller'])
+  })
+  it('crean clientes gestión y chofer, no los operarios', () => {
+    expect(roles.filter(puedeCrearClientes)).toEqual(['admin', 'secretaria', 'jefe_taller', 'chofer'])
   })
 })

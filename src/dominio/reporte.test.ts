@@ -36,6 +36,47 @@ describe('reporteDiario', () => {
     expect(r.sinClasificar).toBe(0)
   })
 
+  it('listo → atrás → listo el mismo día no cuenta doble (ida y vuelta de las mismas 3 unidades)', () => {
+    const r = reporteDiario(HOY, datos({
+      trabajos: [trab('t1', 5)], lineas: [lin('l1', 't1', 3)],
+      movimientos: [
+        mov('l1', 3, null, 'e1', '2026-11-20T12:00:00Z'),
+        mov('l1', 3, 'e1', 'e3', '2026-11-24T12:00:00Z'),
+        mov('l1', 3, 'e3', 'e2', '2026-11-24T13:00:00Z'), // se devolvieron para corregir
+        mov('l1', 3, 'e2', 'e3', '2026-11-24T14:00:00Z'),
+      ],
+    }))
+    expect(r.listo).toMatchObject([{ cantidad: 3, hora: '11:00' }])
+    expect(r.porEntregar).toMatchObject([{ cantidad: 3 }])
+  })
+
+  it('el conteo de listo hoy nunca supera la cantidad de la línea, y lo entregado hoy sigue contando como listo hoy', () => {
+    const r = reporteDiario(HOY, datos({
+      trabajos: [trab('t1', 5)], lineas: [lin('l1', 't1', 2)],
+      movimientos: [
+        mov('l1', 2, null, 'e1', '2026-11-20T12:00:00Z'),
+        mov('l1', 2, 'e1', 'e3', '2026-11-24T12:00:00Z'),
+        mov('l1', 2, 'e3', 'e4', '2026-11-24T12:30:00Z'), // entregadas
+        mov('l1', 2, 'e4', 'e2', '2026-11-24T13:00:00Z'), // corrección: vuelven a producción
+        mov('l1', 2, 'e2', 'e3', '2026-11-24T14:00:00Z'),
+      ],
+    }))
+    expect(r.listo).toMatchObject([{ cantidad: 2 }])
+  })
+
+  it('si lo que quedó listo hoy se devolvió y no volvió, no aparece en listo hoy', () => {
+    const r = reporteDiario(HOY, datos({
+      trabajos: [trab('t1', 5)], lineas: [lin('l1', 't1', 4)],
+      movimientos: [
+        mov('l1', 4, null, 'e1', '2026-11-20T12:00:00Z'),
+        mov('l1', 4, 'e1', 'e3', '2026-11-24T12:00:00Z'),
+        mov('l1', 1, 'e3', 'e2', '2026-11-24T13:00:00Z'),
+      ],
+    }))
+    expect(r.listo).toMatchObject([{ cantidad: 3 }])
+    expect(r.enProduccion).toMatchObject([{ cantidad: 1 }])
+  })
+
   it('una línea en producción aparece en enProduccion con la hora del último movimiento que la puso ahí', () => {
     const r = reporteDiario(HOY, datos({
       trabajos: [trab('t1', 5)], lineas: [lin('l1', 't1', 4)],

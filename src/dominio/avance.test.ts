@@ -4,6 +4,9 @@ import {
   unidadesListas,
   validarMovimiento,
   validarEtapasMovimiento,
+  validarEtapasFinales,
+  SOLO_ENTREGAR_CON_DOCUMENTO,
+  SOLO_GESTION_CORRIGE_ENTREGAS,
   ErrorMovimiento,
 } from './avance'
 import type { Etapa, Movimiento } from './tipos'
@@ -94,5 +97,23 @@ describe('validarEtapasMovimiento', () => {
   })
   it('acepta etapas distintas de la misma área', () => {
     expect(() => validarEtapasMovimiento(etapas[1], etapas[2], 'afilado')).not.toThrow()
+  })
+})
+
+describe('validarEtapasFinales', () => {
+  const listo: Etapa = { id: 'l', area: 'afilado', orden: 4, nombre: 'Listo', esListo: true, esFinal: false }
+  const final: Etapa = { id: 'f', area: 'afilado', orden: 5, nombre: 'Entregado', esListo: false, esFinal: true }
+  const taller: Etapa = { id: 't', area: 'afilado', orden: 2, nombre: 'En taller', esListo: false, esFinal: false }
+  it('nadie lleva unidades a la etapa final con un movimiento común (ni gestión)', () => {
+    expect(() => validarEtapasFinales(listo, final, true)).toThrow(new ErrorMovimiento(SOLO_ENTREGAR_CON_DOCUMENTO))
+    expect(() => validarEtapasFinales(listo, final, false)).toThrow(new ErrorMovimiento(SOLO_ENTREGAR_CON_DOCUMENTO))
+  })
+  it('sacar unidades de la etapa final: solo gestión', () => {
+    expect(() => validarEtapasFinales(final, listo, false)).toThrow(new ErrorMovimiento(SOLO_GESTION_CORRIGE_ENTREGAS))
+    expect(() => validarEtapasFinales(final, listo, true)).not.toThrow()
+  })
+  it('entre etapas no finales no hay restricción', () => {
+    expect(() => validarEtapasFinales(taller, listo, false)).not.toThrow()
+    expect(() => validarEtapasFinales(listo, taller, false)).not.toThrow()
   })
 })

@@ -66,6 +66,8 @@ function montar(opciones: { rol?: Rol; envolver?: (r: Repo) => Repo; visitas?: V
 }
 
 const seccion = (nombre: RegExp | string) => screen.findByRole('heading', { name: nombre }).then((h) => h.closest('section')!)
+const mostrarRetirar = async () =>
+  within((await screen.findByRole('heading', { name: /^Pasar a retirar/ })).closest('section')!).getByRole('button', { name: /Mostrar|Ocultar/ })
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(HOY))
@@ -89,6 +91,23 @@ describe('RutaManana', () => {
       vi.setSystemTime(new Date('2026-11-25T02:30:00Z'))
       montar()
       expect(await screen.findByLabelText('Fecha')).toHaveValue('2026-11-25')
+    })
+    it('si la pantalla queda abierta hasta el día siguiente, al volver a ella la fecha por defecto avanza', async () => {
+      montar()
+      expect(await screen.findByLabelText('Fecha')).toHaveValue(MANANA)
+      vi.setSystemTime(new Date('2026-11-25T15:00:00Z')) // miércoles 25
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+      fireEvent(document, new Event('visibilitychange'))
+      await waitFor(() => expect(screen.getByLabelText('Fecha')).toHaveValue('2026-11-26'))
+    })
+    it('una fecha elegida a mano no se cambia al volver a la pantalla', async () => {
+      montar()
+      await screen.findByLabelText('Fecha')
+      fireEvent.change(screen.getByLabelText('Fecha'), { target: { value: '2026-11-30' } })
+      vi.setSystemTime(new Date('2026-11-26T15:00:00Z'))
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+      fireEvent(document, new Event('visibilitychange'))
+      expect(screen.getByLabelText('Fecha')).toHaveValue('2026-11-30')
     })
     it('al cambiar la fecha carga las visitas de ese día', async () => {
       const espia = vi.fn()
@@ -185,6 +204,7 @@ describe('RutaManana', () => {
       await userEvent.type(screen.getByLabelText('Nota (opcional)'), 'Retira cheques')
       await userEvent.click(screen.getByRole('button', { name: 'Agregar' }))
       expect(extra).toHaveBeenCalledWith(MANANA, 'c7', 'Retira cheques')
+      await userEvent.click(await mostrarRetirar())
       const extras = await seccion('Visitas extra')
       expect(within(extras).getByText('Nuevo Cliente')).toBeInTheDocument()
       expect(extras).toHaveTextContent('Retira cheques')
@@ -208,6 +228,8 @@ describe('RutaManana', () => {
       await userEvent.click(await screen.findByRole('button', { name: /Nuevo Cliente/ }))
       await userEvent.dblClick(screen.getByRole('button', { name: 'Agregar' }))
       expect(extra).toHaveBeenCalledTimes(1)
+      await screen.findByText('Visita agregada: Nuevo Cliente')
+      await userEvent.click(await mostrarRetirar())
       await seccion('Visitas extra')
     })
 
@@ -266,7 +288,7 @@ describe('RutaManana', () => {
       await userEvent.dblClick(screen.getByRole('button', { name: 'Entregar' }))
       expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 2 unidades · Documento 4521')
       expect(entregar).toHaveBeenCalledTimes(1)
-      expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l4', cantidad: 2 }], '4521')
+      expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l4', cantidad: 2 }], '4521', { clave: expect.any(String) })
       await userEvent.click(screen.getByRole('button', { name: 'Listo' }))
       await waitFor(() => expect(screen.queryByRole('heading', { name: 'Retiran en mostrador' })).not.toBeInTheDocument())
     })
@@ -282,7 +304,84 @@ describe('RutaManana', () => {
     await userEvent.dblClick(screen.getByRole('button', { name: 'Entregar' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 3 unidades · Documento F-88')
     expect(entregar).toHaveBeenCalledTimes(1)
-    expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l5', cantidad: 3 }], 'F-88')
+    expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l5', cantidad: 3 }], 'F-88', { clave: expect.any(String) })
+  })
+
+  it('al despachar una encomienda se puede anotar el transporte, y queda a la vista en "Por encomienda"', async () => {
+    const entregar = vi.fn()
+    const repo = montar({ envolver: (r) => ({ ...r, entregarUnidades: (...a) => (entregar(...a), r.entregarUnidades(...a)) }) })
+    const enco = await seccion('Por encomienda')
+    await userEvent.click(within(enco).getByRole('button', { name: 'Despachar' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Menos Formón' })) // despacha 2 de 3
+    await userEvent.type(screen.getByLabelText(/N° de documento/), 'F-88')
+    await userEvent.type(screen.getByLabelText(/Transporte \(empresa y N° de guía de transporte/), 'Starken 123456')
+    await userEvent.click(screen.getByRole('button', { name: 'Entregar' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Documento F-88 · Transporte Starken 123456')
+    expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l5', cantidad: 2 }], 'F-88', { clave: expect.any(String), transporte: 'Starken 123456' })
+    await userEvent.click(screen.getByRole('button', { name: 'Listo' }))
+    await waitFor(async () => expect(await seccion('Por encomienda')).toHaveTextContent('Transporte: Starken 123456'))
+    expect((await repo.cargarTodo()).trabajos.find((t) => t.id === 't5')?.transporte).toBe('Starken 123456')
+  })
+
+  it('el retiro en mostrador no pide transporte', async () => {
+    montar()
+    await userEvent.click(within(await seccion('Retiran en mostrador')).getByRole('button', { name: 'Entregar en mostrador' }))
+    await screen.findByLabelText(/N° de documento/)
+    expect(screen.queryByLabelText(/Transporte/)).not.toBeInTheDocument()
+  })
+
+  describe('pasar a retirar', () => {
+    it('lista, plegados, a todos los clientes del recorrido del día sin nada que entregar; al imprimir salen igual', async () => {
+      montar()
+      const boton = await mostrarRetirar()
+      expect(boton).toHaveAttribute('aria-expanded', 'false')
+      const seccionRetirar = boton.closest('section')!
+      expect(within(seccionRetirar).getByRole('heading', { name: 'Pasar a retirar (2)' })).toBeInTheDocument()
+      const contenido = document.getElementById(boton.getAttribute('aria-controls')!)!
+      expect(contenido).toHaveClass('hidden')
+      expect(contenido).toHaveClass('print:flex')
+      // en papel no hay que tocar nada: el contenido está en la página aunque esté plegado
+      expect(contenido).toHaveTextContent('Mostrador Ltda')
+      expect(contenido).toHaveTextContent('Encomiendas SA')
+      expect(screen.queryByRole('heading', { name: 'Mostrador Ltda' })).not.toBeInTheDocument()
+      await userEvent.click(boton)
+      expect(boton).toHaveAttribute('aria-expanded', 'true')
+      expect(contenido).not.toHaveClass('hidden')
+      const norte = within(contenido).getByRole('heading', { name: /Norte · Camioneta A/ }).closest('section')!
+      expect(within(norte).getByText('Mostrador Ltda')).toBeInTheDocument()
+      expect(norte).toHaveTextContent('Sin unidades listas para esta visita.')
+      await userEvent.click(boton)
+      expect(contenido).toHaveClass('hidden')
+    })
+
+    it('un cliente lejano sin nada que entregar se puede confirmar ahí y se cuenta como "por confirmar"', async () => {
+      const marcar = vi.fn()
+      montar({ envolver: (r) => ({
+        ...r,
+        marcarVisita: (...a) => (marcar(...a), r.marcarVisita(...a)),
+        cargarTodo: async () => {
+          const d = await r.cargarTodo()
+          return { ...d, movimientos: d.movimientos.filter((m) => m.lineaId !== 'l2') } // Libros del Norte (lejano) sin nada listo
+        },
+      }) })
+      const boton = await mostrarRetirar()
+      expect(boton.closest('section')!).toHaveTextContent('1 por confirmar')
+      await userEvent.click(boton)
+      const grupo = screen.getByRole('radiogroup', { name: 'Visita Libros del Norte' })
+      await userEvent.click(within(grupo).getByLabelText('Sí'))
+      expect(marcar).toHaveBeenCalledWith(MANANA, 'c2', 'si')
+      await waitFor(() => expect(within(grupo).getByLabelText('Sí')).toBeChecked())
+    })
+
+    it('si el cliente de la visita extra ya está en la ruta, lo avisa antes y después de agregar', async () => {
+      montar()
+      await userEvent.click(await screen.findByRole('button', { name: 'Agregar visita extra' }))
+      await userEvent.type(screen.getByLabelText('Cliente'), 'mostrador')
+      await userEvent.click(await screen.findByRole('button', { name: /Mostrador Ltda/ }))
+      expect(screen.getByText(/Mostrador Ltda ya está en la ruta de este día/)).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Agregar' }))
+      expect(await screen.findByText('Mostrador Ltda ya estaba en la ruta de este día: quedó marcada como visita solicitada.')).toBeInTheDocument()
+    })
   })
 
   it('un rol que no puede entregar no ve los botones de entrega', async () => {

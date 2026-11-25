@@ -1,8 +1,9 @@
 import type { Cliente, Modalidad, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
-import type { Entrega } from '../dominio/entrega'
+import type { Entrega, OpcionesEntrega } from '../dominio/entrega'
 import type { DatosTrabajoNuevo } from '../dominio/trabajo'
 import type { DatosOperacion } from '../dominio/listo'
 import type { ClienteImportado, ProductoImportado } from '../dominio/csv'
+import type { ClienteNuevo } from '../dominio/maestros'
 
 export interface ResultadoGuardado {
   creados: number
@@ -27,10 +28,17 @@ export interface Repo {
    * Recibe un trabajo: lo crea con sus líneas y, por cada línea, un movimiento inicial (sin origen)
    * hacia la primera etapa del área con la cantidad completa, todo o nada. Lanza ErrorTrabajo
    * (mensaje en español) si no se puede.
+   * `clave` (uuid, una por formulario abierto): si el mismo usuario ya creó un trabajo con esa clave
+   * (se perdió la respuesta y se reintenta), devuelve ese trabajo sin crear otro.
    */
-  crearTrabajo(datos: DatosTrabajoNuevo): Promise<Trabajo>
+  crearTrabajo(datos: DatosTrabajoNuevo, clave?: string): Promise<Trabajo>
 
   listarClientes(): Promise<Cliente[]>
+  /**
+   * Crea un cliente (Recepción → "Cliente nuevo"; gestión y chofer). Valida con validarClienteNuevo
+   * y lanza ErrorCliente en español (también si el RUT ya existe).
+   */
+  crearCliente(datos: ClienteNuevo): Promise<Cliente>
   /** Crea o actualiza por RUT (idempotente). No cambia el recorrido de los que ya existen. */
   guardarClientes(clientes: ClienteImportado[]): Promise<ResultadoGuardado>
   listarRecorridos(): Promise<Recorrido[]>
@@ -60,7 +68,10 @@ export interface Repo {
    * se crea (una por cliente y día). Lanza ErrorVisita (en español) si no se puede.
    */
   marcarVisita(fecha: string, clienteId: string, confirmada: Visita['confirmada']): Promise<void>
-  /** Agrega (o marca como solicitada) una visita fuera de ruta en un día hábil, con nota opcional. */
+  /**
+   * Agrega (o marca como solicitada) una visita fuera de ruta en un día hábil, con nota opcional.
+   * Sin nota no se borra la nota que la visita ya tenía.
+   */
   agregarVisitaExtra(fecha: string, clienteId: string, nota?: string): Promise<void>
   /** Cambia la modalidad de salida de un trabajo (decide si va en la ruta, al mostrador o por encomienda). */
   actualizarSalida(trabajoId: string, salida: Modalidad): Promise<void>
@@ -68,6 +79,8 @@ export interface Repo {
    * Entrega, todo o nada, unidades listas de una o varias líneas: las mueve a la etapa final del área
    * y anota `documento` (N° de guía o factura) en la guía de despacho de cada trabajo. Nunca entrega
    * más de lo que está listo. Lanza ErrorEntrega (en español) si no se puede.
+   * `opciones.clave`: si el mismo usuario ya registró esta misma entrega con esa clave, no hace nada
+   * (reintento tras una respuesta perdida). `opciones.transporte`: se anota en cada trabajo tocado.
    */
-  entregarUnidades(entregas: Entrega[], documento: string): Promise<void>
+  entregarUnidades(entregas: Entrega[], documento: string, opciones?: OpcionesEntrega): Promise<void>
 }

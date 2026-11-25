@@ -1,11 +1,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Repo } from './repo'
 import type { Area, Cliente, Etapa, Linea, Modalidad, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
-import { planificarClientes, planificarProductos } from '../dominio/maestros'
+import { ErrorCliente, planificarClientes, planificarProductos, RUT_DUPLICADO, validarClienteNuevo } from '../dominio/maestros'
 import { ErrorTrabajo, MODALIDADES, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
-import { ErrorEntrega, validarEntradaEntrega } from '../dominio/entrega'
+import { ErrorEntrega, validarEntradaEntrega, validarTransporte } from '../dominio/entrega'
 import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
-import { ErrorMovimiento, validarCantidad } from '../dominio/avance'
+import { ErrorMovimiento, SOLO_GESTION_CORRIGE_ENTREGAS, validarCantidad } from '../dominio/avance'
 
 interface FilaMovimiento {
   id: string
@@ -29,12 +29,22 @@ export function filaAMovimiento(f: FilaMovimiento): Movimiento {
   }
 }
 
-/** Traduce un error de mover_unidades: las reglas de la base ya traen mensaje en español. */
+const MENSAJES_PERMISO_MOVIMIENTO = [
+  'Debes iniciar sesión para mover unidades.',
+  'No tienes permiso para mover unidades de esta área.',
+  SOLO_GESTION_CORRIGE_ENTREGAS,
+]
+
+/**
+ * Traduce un error de mover_unidades: las reglas de la base (P0001) y sus avisos de permiso ya traen
+ * mensaje en español; cualquier otro 42501 (RLS, o "permission denied for table" por falta de
+ * permisos de tabla) se reemplaza por un aviso en español.
+ */
 export function errorDeMovimiento(e: { code?: string; message: string }): Error {
   if (e.code === 'P0001') return new ErrorMovimiento(e.message)
   if (e.code === '42501') {
     return new ErrorMovimiento(
-      /row-level security/i.test(e.message) ? 'No tienes permiso para mover unidades de esta línea.' : e.message,
+      MENSAJES_PERMISO_MOVIMIENTO.includes(e.message) ? e.message : 'No tienes permiso para mover unidades de esta línea.',
     )
   }
   if (e.code === '22P02') return new ErrorMovimiento('La cantidad debe ser un número entero mayor que cero.')
@@ -153,6 +163,18 @@ export function filaALinea(f: FilaLinea): Linea {
 }
 export function filaAEtapa(f: FilaEtapa): Etapa {
   return { id: f.id, area: f.area as Area, orden: f.orden, nombre: f.nombre, esListo: f.es_listo, esFinal: f.es_final }
+}
+
+/**
+ * Traduce un error al crear un cliente. El RUT repetido (índice único clientes_rut_unico, 23505) se
+ * explica en español; nunca se muestra el mensaje técnico de la base.
+ */
+export function errorDeCliente(e: { code?: string; message: string }): Error {
+  if (e.code === '23505') return new ErrorCliente(RUT_DUPLICADO)
+  if (e.code === '42501') return new ErrorCliente('No tienes permiso para crear clientes.')
+  if (e.code === '23503') return new ErrorCliente('El recorrido no existe.')
+  if (e.code === '22P02') return new ErrorCliente('Revisa los datos: hay un valor que no es válido.')
+  return new Error('No se pudo guardar el cliente. Revisa tu conexión e inténtalo de nuevo.')
 }
 
 /** Traduce un error de escritura de maestros a un mensaje en español. */
@@ -285,7 +307,7 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
       if (error) throw errorDeMovimiento(error)
       return filaAMovimiento(data as FilaMovimiento)
     },
-    async crearTrabajo(datos: DatosTrabajoNuevo) {
+    async crearTrabajo(datos: DatosTrabajoNuevo, clave?: string) {
       const errores = validarTrabajoNuevo(datos)
       if (errores.length > 0) throw new ErrorTrabajo(errores[0])
       // Una sola llamada a la base: trabajo, líneas y movimientos iniciales en una transacción.
@@ -299,6 +321,8 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
           guia_retiro: datos.guiaRetiro,
           notas: datos.notas,
           lineas: datos.lineas.map((l) => ({ producto: l.producto, cantidad: l.cantidad, nota: l.nota })),
+          // Reintento tras una respuesta perdida: con la misma clave la base devuelve el trabajo ya creado.
+          clave,
         },
       })
       if (error) throw errorDeTrabajo(error)
@@ -368,11 +392,13 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
       if (error) throw errorDeVisita(error)
     },
     async agregarVisitaExtra(fecha, clienteId, nota) {
-      const texto = nota?.trim() || null
-      validarVisita({ fecha, clienteId, nota: texto ?? undefined })
-      const { error } = await sb
-        .from('visitas')
-        .upsert({ fecha, cliente_id: clienteId, solicitada: true, nota: texto }, { onConflict: 'fecha,cliente_id' })
+      const texto = nota?.trim() || undefined
+      validarVisita({ fecha, clienteId, nota: texto })
+      // Sin nota no se manda la columna: el upsert de PostgREST solo actualiza lo enviado, así no se
+      // borra la nota que la visita ya tenía.
+      const fila: Record<string, unknown> = { fecha, cliente_id: clienteId, solicitada: true }
+      if (texto) fila.nota = texto
+      const { error } = await sb.from('visitas').upsert(fila, { onConflict: 'fecha,cliente_id' })
       if (error) throw errorDeVisita(error)
     },
     async actualizarSalida(trabajoId, salida) {
@@ -387,12 +413,16 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
         throw new ErrorTrabajo('No se pudo cambiar la salida (el trabajo no existe o no tienes permiso).')
       }
     },
-    async entregarUnidades(entregas, documento) {
+    async entregarUnidades(entregas, documento, opciones = {}) {
       const doc = validarEntradaEntrega(entregas, documento)
-      // Una sola llamada: la base bloquea las líneas en orden fijo y entrega todo o nada.
+      const transporte = validarTransporte(opciones.transporte)
+      // Una sola llamada: la base bloquea las líneas en orden fijo y entrega todo o nada. Con la misma
+      // clave, un reintento (respuesta perdida) no vuelve a entregar.
       const { error } = await sb.rpc('entregar_unidades', {
         p_entregas: entregas.map((e) => ({ linea_id: e.lineaId, cantidad: e.cantidad })),
         p_documento: doc,
+        p_clave: opciones.clave ?? null,
+        p_transporte: transporte ?? null,
       })
       if (error) throw errorDeEntrega(error)
     },
@@ -405,6 +435,23 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
       } catch {
         throw new Error('No se pudieron cargar los clientes. Revisa tu conexión.')
       }
+    },
+    async crearCliente(datos) {
+      const { cliente, errores } = validarClienteNuevo(datos)
+      if (errores.length > 0) throw new ErrorCliente(errores[0])
+      const { data, error } = await sb
+        .from('clientes')
+        .insert({
+          nombre: cliente.nombre,
+          rut: cliente.rut,
+          contacto: cliente.contacto ?? null,
+          direccion: cliente.direccion ?? null,
+          recorrido_id: cliente.recorridoId,
+        })
+        .select('id, nombre, rut, contacto, direccion, recorrido_id')
+        .single()
+      if (error) throw errorDeCliente(error)
+      return filaACliente(data as FilaCliente)
     },
     async guardarClientes(entrantes) {
       const plan = planificarClientes(await repo.listarClientes(), entrantes)

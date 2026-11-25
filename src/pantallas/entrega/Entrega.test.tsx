@@ -84,7 +84,7 @@ describe('Entrega', () => {
     await userEvent.click(entregar())
     expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 3 unidades · Documento 4521')
     expect(espia).toHaveBeenCalledTimes(1)
-    expect(espia).toHaveBeenCalledWith([{ lineaId: 'l1', cantidad: 3 }], '4521')
+    expect(espia).toHaveBeenCalledWith([{ lineaId: 'l1', cantidad: 3 }], '4521', { clave: expect.any(String) })
     expect(alTerminar).toHaveBeenCalledTimes(1)
   })
 
@@ -163,6 +163,64 @@ describe('Entrega', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     await userEvent.click(entregar())
     expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 6 unidades · Documento 4521')
+  })
+
+  it('respuesta perdida: la entrega sí quedó, el reintento reusa la clave y no entrega dos veces', async () => {
+    const claves: unknown[] = []
+    let perder = true
+    const { repo } = montar((r) => ({
+      ...r,
+      entregarUnidades: async (...a) => {
+        claves.push(a[2]?.clave)
+        await r.entregarUnidades(...a)
+        if (perder) {
+          perder = false
+          throw new Error('Failed to fetch') // la base registró la entrega, pero la respuesta no llegó
+        }
+      },
+    }))
+    await userEvent.type(doc(), '4521')
+    await userEvent.click(entregar())
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo registrar la entrega. Revisa tu conexión e inténtalo de nuevo.')
+    await userEvent.click(entregar())
+    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 6 unidades · Documento 4521')
+    expect(claves).toHaveLength(2)
+    expect(claves[0]).toMatch(/^[0-9a-f-]{36}$/)
+    expect(claves[1]).toBe(claves[0])
+    const d = await repo.cargarTodo()
+    expect(d.movimientos.filter((m) => m.etapaDestinoId === 'a5').reduce((s, m) => s + m.cantidad, 0)).toBe(6)
+    expect(d.trabajos[0].guiaDespacho).toBe('4521')
+  })
+
+  it('cada panel abierto tiene su propia clave', async () => {
+    const claves: unknown[] = []
+    const env = (r: Repo): Repo => ({ ...r, entregarUnidades: (...a) => (claves.push(a[2]?.clave), r.entregarUnidades(...a)) })
+    const { unmount } = render(<Entrega repo={env(crearMemoryRepo({ usuario: { id: 'u', nombre: 'P', rol: 'chofer' } }))} lineas={lineas} alCerrar={() => undefined} />)
+    await userEvent.type(doc(), '1')
+    await userEvent.click(entregar())
+    await screen.findByRole('alert')
+    unmount()
+    render(<Entrega repo={env(crearMemoryRepo({ usuario: { id: 'u', nombre: 'P', rol: 'chofer' } }))} lineas={lineas} alCerrar={() => undefined} />)
+    await userEvent.type(doc(), '1')
+    await userEvent.click(entregar())
+    await screen.findByRole('alert')
+    expect(claves[1]).not.toBe(claves[0])
+  })
+
+  it('encomienda: anota el transporte (opcional) junto con el documento', async () => {
+    const espia = vi.fn()
+    const { repo } = montar(espiar(espia), { conTransporte: true })
+    await userEvent.type(doc(), '4521')
+    await userEvent.type(screen.getByLabelText(/Transporte \(empresa y N° de guía de transporte/), ' Starken 998877 ')
+    await userEvent.click(entregar())
+    expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 6 unidades · Documento 4521 · Transporte Starken 998877')
+    expect(espia).toHaveBeenCalledWith(expect.any(Array), '4521', { clave: expect.any(String), transporte: 'Starken 998877' })
+    expect((await repo.cargarTodo()).trabajos[0].transporte).toBe('Starken 998877')
+  })
+
+  it('sin conTransporte no pide transporte', () => {
+    montar()
+    expect(screen.queryByLabelText(/Transporte/)).not.toBeInTheDocument()
   })
 
   it('un error técnico nunca se muestra crudo', async () => {

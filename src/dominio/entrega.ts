@@ -30,6 +30,26 @@ export interface PlanEntrega {
 }
 
 export const DOCUMENTO_MAXIMO = 40
+export const TRANSPORTE_MAXIMO = 120
+
+/** Opciones de una entrega: clave de idempotencia (reintentos) y transporte (encomienda). */
+export interface OpcionesEntrega {
+  /** uuid generado por el panel de entrega; con la misma clave, un reintento no entrega dos veces. */
+  clave?: string
+  /** Empresa y N° de guía de transporte (encomienda); se anota en cada trabajo entregado. */
+  transporte?: string
+}
+
+/** Valida el transporte de una encomienda: sin espacios sobrantes, hasta 120 caracteres; vacío = undefined. */
+export function validarTransporte(transporte: string | undefined): string | undefined {
+  const t = (transporte ?? '').trim()
+  if (t === '') return undefined
+  if (largo(t) > TRANSPORTE_MAXIMO) throw new ErrorEntrega(`El transporte puede tener hasta ${TRANSPORTE_MAXIMO} caracteres.`)
+  return t
+}
+
+/** Mensaje cuando una clave de entrega ya se usó para otra cosa (otro usuario u otros datos). Igual que en la base (0008). */
+export const ENTREGA_CLAVE_USADA = 'Esta entrega no se pudo registrar. Cierra el panel, ábrelo de nuevo y revisa lo que ya quedó entregado.'
 
 const largo = (s: string) => [...s].length
 const comparar = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)

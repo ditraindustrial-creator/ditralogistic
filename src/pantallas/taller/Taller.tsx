@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { ErrorMovimiento, validarMovimiento } from '../../dominio/avance'
-import { puedeEntregar, puedeVer } from '../../dominio/permisos'
+import { esGestion, puedeEntregar, puedeVer } from '../../dominio/permisos'
 import type { LineaEntregable } from '../../dominio/entrega'
 import { areasDelRol, destinoPorDefecto, lineasEnCurso, origenPorDefecto, reconciliarSeleccion, type LineaTaller } from '../../dominio/taller'
 import type { Area, UsuarioActual } from '../../dominio/tipos'
@@ -56,6 +56,9 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   const [entrega, setEntrega] = useState<{ lineaId: string; cantidad: number } | null>(null)
 
   const entrega_ok = puedeEntregar(usuario.rol)
+  // Sacar unidades de una etapa final (corregir una entrega) es solo de gestión, igual que en la base.
+  const corrige = esGestion(usuario.rol)
+  const origenes = (l: LineaTaller) => l.distribucion.filter((d) => corrige || !d.etapa.esFinal)
 
   const permitidas = useMemo(
     () => (puedeVer(usuario.rol, 'taller') ? areasDelRol(usuario.rol).filter((a) => !area || a === area) : []),
@@ -240,11 +243,11 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
 
               {abierta && sel && (
                 <div className="flex flex-col gap-4 border-t p-3">
-                  {l.distribucion.length > 1 && (
+                  {origenes(l).length > 1 && (
                     <fieldset className="flex flex-col gap-2">
                       <legend className="mb-1 text-lg font-semibold">Desde</legend>
                       <div className="grid grid-cols-2 gap-2">
-                        {l.distribucion.map((d) => (
+                        {origenes(l).map((d) => (
                           <Opcion
                             key={d.etapa.id}
                             nombre={`desde-${l.lineaId}`}

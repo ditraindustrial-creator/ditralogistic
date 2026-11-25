@@ -22,8 +22,24 @@ if (!process.argv.includes('--sin-build')) {
   // Se compila sin variables de Supabase: la app muestra su aviso de configuración, suficiente para esta revisión.
   execSync('npm run build', { cwd: raiz, stdio: 'ignore' })
 }
-const servidor = spawn('npx', ['vite', 'preview', '--port', String(PUERTO), '--strictPort'], { cwd: raiz, stdio: 'ignore' })
+// Primero el navegador: si falta, abrirNavegador() termina el proceso y aún no hay servidor que deje
+// ocupado el puerto 4173. El servidor se lanza con node directo (no con npx) para que kill() termine
+// el proceso de vite y no solo un intermediario; además se mata en cualquier salida.
 const navegador = await abrirNavegador()
+const servidor = spawn(process.execPath, [join(raiz, 'node_modules', 'vite', 'bin', 'vite.js'), 'preview', '--port', String(PUERTO), '--strictPort'], {
+  cwd: raiz,
+  stdio: 'ignore',
+})
+const matarServidor = () => {
+  if (servidor.exitCode === null && !servidor.killed) servidor.kill()
+}
+process.on('exit', matarServidor)
+for (const senal of ['SIGINT', 'SIGTERM']) {
+  process.on(senal, () => {
+    matarServidor()
+    process.exit(130)
+  })
+}
 try {
   for (let i = 0; i < 50; i++) {
     try {
@@ -70,7 +86,7 @@ try {
   ok(sw?.activo === true, `service worker registrado y activo (scope ${sw?.scope})`)
 } finally {
   await navegador.close()
-  servidor.kill()
+  matarServidor()
 }
 console.log(fallos.length ? `\n${fallos.length} fallas` : '\nPWA instalable: todas las comprobaciones pasaron')
 process.exit(fallos.length ? 1 : 0)

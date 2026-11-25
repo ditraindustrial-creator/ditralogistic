@@ -67,6 +67,16 @@ describe('Reporte', () => {
     expect(within(seccion('En producción')).getByText('No hay trabajos en producción.')).toBeInTheDocument()
   })
 
+  it('con la pantalla abierta de un día para otro, al volver muestra el día nuevo ("Listo hoy" sigue siendo hoy)', async () => {
+    montar([])
+    expect(await screen.findByLabelText('Fecha')).toHaveValue('2026-11-24')
+    vi.setSystemTime(new Date('2026-11-25T11:00:00Z')) // 08:00 del miércoles 25 en Santiago
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    fireEvent(document, new Event('visibilitychange'))
+    expect(await screen.findByDisplayValue('2026-11-25')).toBeInTheDocument()
+    expect(seccion('Listo hoy')).toBeInTheDocument()
+  })
+
   it('avisa cuando hay líneas sin clasificar', async () => {
     montar([mov('m1', 'l1', 3, null, 'desconocida', '2026-11-24T12:00:00Z')])
     expect(await screen.findByText(/1 línea sin clasificar/)).toBeInTheDocument()

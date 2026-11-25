@@ -31,3 +31,22 @@ export function siguienteDiaHabil(fecha: string): string {
   const dos = (n: number) => String(n).padStart(2, '0')
   return `${s.getUTCFullYear()}-${dos(s.getUTCMonth() + 1)}-${dos(s.getUTCDate())}`
 }
+
+/**
+ * Milisegundos desde `ahora` hasta que cambia el día calendario en Santiago (la próxima medianoche
+ * local, o la hora en que empieza el día si el cambio de hora se salta la medianoche). Sirve para
+ * refrescar la fecha por defecto de una pantalla abierta. Búsqueda binaria sobre diaLocal, así
+ * respeta el cambio de hora sin conocer sus reglas. Siempre > 0.
+ */
+export function msHastaCambioDeDia(ahora: Date): number {
+  const t0 = ahora.getTime()
+  const hoy = diaLocal(ahora.toISOString())
+  let bajo = 0 // aún es hoy
+  let alto = 26 * 3_600_000 // ya es otro día (ningún día dura más de 25 h)
+  while (alto - bajo > 1) {
+    const medio = Math.floor((bajo + alto) / 2)
+    if (diaLocal(new Date(t0 + medio).toISOString()) === hoy) bajo = medio
+    else alto = medio
+  }
+  return alto
+}

@@ -54,3 +54,19 @@ export function validarEtapasMovimiento(origen: Etapa | undefined, destino: Etap
     throw new ErrorMovimiento('Las etapas no corresponden al área del trabajo.')
   }
 }
+
+/** Igual que movimientos_validar (0008): llevar unidades a la etapa final solo se hace al entregar. */
+export const SOLO_ENTREGAR_CON_DOCUMENTO = 'Las entregas se registran con «Entregar», anotando el número de guía o factura.'
+/** Igual que movimientos_validar (0008): sacar unidades de una etapa final (corrección) es solo de gestión. */
+export const SOLO_GESTION_CORRIGE_ENTREGAS =
+  'Solo secretaría, jefe de taller o administración pueden sacar unidades de una etapa de entrega.'
+
+/**
+ * Reglas de las etapas finales para un movimiento común (no una entrega), en el orden de la base:
+ * desde una etapa final solo mueve gestión (corrección de una entrega); hacia una etapa final no
+ * mueve nadie (se entrega con documento). Lanza ErrorMovimiento.
+ */
+export function validarEtapasFinales(origen: Etapa | undefined, destino: Etapa | undefined, esGestion: boolean): void {
+  if (origen?.esFinal && !esGestion) throw new ErrorMovimiento(SOLO_GESTION_CORRIGE_ENTREGAS)
+  if (destino?.esFinal) throw new ErrorMovimiento(SOLO_ENTREGAR_CON_DOCUMENTO)
+}

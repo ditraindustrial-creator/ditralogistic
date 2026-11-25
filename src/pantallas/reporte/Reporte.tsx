@@ -1,8 +1,9 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo } from 'react'
 import type { Repo } from '../../data/repo'
 import { diaLocal } from '../../dominio/fechas'
 import { etiquetaHora, reporteDiario, type FilaReporte } from '../../dominio/reporte'
 import { useDatosEnVivo } from '../useDatosEnVivo'
+import { useFechaPorDefecto } from '../useFechaPorDefecto'
 import { fechaLarga } from '../ruta/comun'
 
 const campo = 'min-h-12 rounded border bg-white p-3 text-lg'
@@ -43,10 +44,13 @@ function Seccion({ titulo, vacio, filas, fecha, conDia }: { titulo: string; vaci
   )
 }
 
+const elMismoDia = (hoy: string) => hoy
+
 export default function Reporte({ repo }: { repo: Repo }) {
   const { datos, error, conectado } = useDatosEnVivo(repo)
+  // Hoy en Santiago; se recalcula si la pantalla queda abierta de un día para otro (salvo fecha elegida).
+  const [fecha, elegirFecha] = useFechaPorDefecto(elMismoDia)
   const hoy = diaLocal(new Date().toISOString())
-  const [fecha, setFecha] = useState(hoy)
   const reporte = useMemo(() => (datos ? reporteDiario(fecha, datos) : null), [datos, fecha])
   const esHoy = fecha === hoy
 
@@ -59,7 +63,7 @@ export default function Reporte({ repo }: { repo: Repo }) {
             type="date"
             className={campo}
             value={fecha}
-            onChange={(e) => e.target.value && setFecha(e.target.value)}
+            onChange={(e) => e.target.value && elegirFecha(e.target.value)}
           />
         </label>
         <button type="button" className={botonClaro} onClick={() => window.print()}>Imprimir</button>

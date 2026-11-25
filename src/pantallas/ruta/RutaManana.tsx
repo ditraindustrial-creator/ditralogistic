@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
-import { diaLocal, diaSemana, siguienteDiaHabil } from '../../dominio/fechas'
+import { diaSemana, siguienteDiaHabil } from '../../dominio/fechas'
 import { lineasEntregables } from '../../dominio/entrega'
 import { puedeEntregar } from '../../dominio/permisos'
 import { resumenListo, type FilaListo } from '../../dominio/listo'
@@ -9,15 +9,11 @@ import { ErrorTrabajo, filtrarClientes } from '../../dominio/trabajo'
 import type { Cliente, Modalidad, UsuarioActual } from '../../dominio/tipos'
 import Entrega from '../entrega/Entrega'
 import { useDatosEnVivo } from '../useDatosEnVivo'
-import { agruparParadas, ESTADO_VISITA, fechaLarga, NOMBRES_SALIDA, textoProductos, useVisitas } from './comun'
+import { useFechaPorDefecto } from '../useFechaPorDefecto'
+import { agruparParadas, ControlVisita, ESTADO_VISITA, fechaLarga, NOMBRES_SALIDA, Plegable, textoProductos, useVisitas } from './comun'
 
 const ERROR_VISITA = 'No se pudo guardar la visita. Revisa tu conexión e inténtalo de nuevo.'
 const ERROR_SALIDA = 'No se pudo cambiar la salida. Revisa tu conexión e inténtalo de nuevo.'
-const CONFIRMACIONES: { id: Confirmacion; titulo: string }[] = [
-  { id: 'si', titulo: 'Sí' },
-  { id: 'no', titulo: 'No' },
-  { id: 'sin_respuesta', titulo: 'Sin respuesta' },
-]
 const AREAS = { afilado: 'Afilado', encuadernacion: 'Encuadernación' }
 
 const campo = 'min-h-12 w-full rounded border bg-white p-3 text-lg'
@@ -28,11 +24,12 @@ const unidades = (n: number) => `${n} ${n === 1 ? 'trabajo' : 'trabajos'}`
 
 export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: UsuarioActual }) {
   const { datos, error: errorCarga, conectado, recargar } = useDatosEnVivo(repo)
-  const [fecha, setFecha] = useState(() => siguienteDiaHabil(diaLocal(new Date().toISOString())))
+  // Próximo día hábil; se recalcula si la pantalla queda abierta de un día para otro (salvo fecha elegida).
+  const [fecha, elegirFecha] = useFechaPorDefecto(siguienteDiaHabil)
   const { visitas, error: errorVisitas, recargar: recargarVisitas } = useVisitas(repo, fecha)
   const [aviso, setAviso] = useState('')
   const [error, setError] = useState('')
-  const [entregando, setEntregando] = useState<{ trabajoId: string; titulo: string } | null>(null)
+  const [entregando, setEntregando] = useState<{ trabajoId: string; titulo: string; conTransporte?: boolean } | null>(null)
   const [extraAbierta, setExtraAbierta] = useState(false)
   const ocupado = useRef(new Set<string>())
   const [, repintar] = useState(0)
@@ -81,6 +78,38 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
   }, [filas, ruta])
 
   const grupos = useMemo(() => agruparParadas(ruta?.paradas ?? [], datos?.recorridos ?? []), [ruta, datos])
+  const gruposRetirar = useMemo(() => agruparParadas(ruta?.pasarARetirar ?? [], datos?.recorridos ?? []), [ruta, datos])
+  const enRuta = useMemo(() => new Set([...(ruta?.paradas ?? []), ...(ruta?.pasarARetirar ?? [])].map((p) => p.clienteId)), [ruta])
+  const porConfirmar = (ruta?.pasarARetirar ?? []).filter((p) => p.requiereConfirmacion && p.confirmada === 'sin_respuesta').length
+  const trabajoPorId = useMemo(() => new Map((datos?.trabajos ?? []).map((t) => [t.id, t])), [datos])
+
+  function tarjetaParada(p: Parada) {
+    return (
+      <li key={p.clienteId} className="flex flex-col gap-2 rounded border-l-8 border-teal-700 bg-white p-3 shadow-sm print:shadow-none">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <span className="text-lg font-semibold">{p.clienteNombre}</span>
+          {(p.requiereConfirmacion || p.solicitada) && (
+            <span className="text-sm text-slate-700">
+              {p.solicitada ? 'Visita extra · ' : ''}{p.requiereConfirmacion ? `Visita: ${ESTADO_VISITA[p.confirmada]}` : ''}
+            </span>
+          )}
+        </div>
+        {p.nota && <p className="text-slate-700">Nota: {p.nota}</p>}
+        {p.entregar.length === 0 ? (
+          <p className="text-slate-600">Sin unidades listas para esta visita.</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {p.entregar.map((f) => (
+              <li key={f.trabajoId}>N.º {f.numero} · {datos ? textoProductos(datos, f.trabajoId) : ''}</li>
+            ))}
+          </ul>
+        )}
+        {p.requiereConfirmacion && (
+          <ControlVisita parada={p} ocupado={ocupado.current.has(`visita-${p.clienteId}`)} alMarcar={(c) => void marcar(p, c)} />
+        )}
+      </li>
+    )
+  }
 
   const finDeSemana = diaSemana(fecha) > 5
 
@@ -95,7 +124,7 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
             value={fecha}
             onChange={(e) => {
               if (fechaValida(e.target.value)) {
-                setFecha(e.target.value)
+                elegirFecha(e.target.value)
                 setEntregando(null)
                 setError('')
                 setAviso('')
@@ -112,11 +141,12 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
       {extraAbierta && datos && (
         <VisitaExtra
           clientes={datos.clientes}
+          enRuta={enRuta}
           alAgregar={(c, nota) =>
             hacer('extra', async () => {
               await repo.agregarVisitaExtra(fecha, c.id, nota)
               await recargarVisitas()
-              setAviso(`Visita agregada: ${c.nombre}`)
+              setAviso(enRuta.has(c.id) ? `${c.nombre} ya estaba en la ruta de este día: quedó marcada como visita solicitada.` : `Visita agregada: ${c.nombre}`)
               setExtraAbierta(false)
             }, ERROR_VISITA)
           }
@@ -132,6 +162,7 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
             repo={repo}
             titulo={entregando.titulo}
             lineas={lineasEntregables(datos, [entregando.trabajoId])}
+            conTransporte={entregando.conTransporte}
             alTerminar={() => void recargar()}
             alCerrar={() => setEntregando(null)}
           />
@@ -148,58 +179,30 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
       {ruta && (
         <>
           {finDeSemana && <p className="text-slate-700">Sábado y domingo no hay ruta.</p>}
-          {!finDeSemana && grupos.length === 0 && <p className="text-slate-700">No hay paradas para esta fecha.</p>}
+          {!finDeSemana && grupos.length === 0 && (
+            <p className="text-slate-700">
+              {gruposRetirar.length === 0 ? 'No hay paradas para esta fecha.' : 'No hay entregas por ruta para esta fecha.'}
+            </p>
+          )}
           {grupos.map((g) => (
             <section key={g.clave} aria-labelledby={`g-${g.clave}`} className="flex flex-col gap-2">
               <h2 id={`g-${g.clave}`} className="text-xl font-bold">{g.titulo}</h2>
-              <ul className="flex flex-col gap-3">
-                {g.paradas.map((p) => (
-                  <li key={p.clienteId} className="flex flex-col gap-2 rounded border-l-8 border-teal-700 bg-white p-3 shadow-sm print:shadow-none">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="text-lg font-semibold">{p.clienteNombre}</span>
-                      {(p.requiereConfirmacion || p.solicitada) && (
-                        <span className="text-sm text-slate-700">
-                          {p.solicitada ? 'Visita extra · ' : ''}{p.requiereConfirmacion ? `Visita: ${ESTADO_VISITA[p.confirmada]}` : ''}
-                        </span>
-                      )}
-                    </div>
-                    {p.nota && <p className="text-slate-700">Nota: {p.nota}</p>}
-                    {p.entregar.length === 0 ? (
-                      <p className="text-slate-600">Sin unidades listas para esta visita.</p>
-                    ) : (
-                      <ul className="flex flex-col gap-1">
-                        {p.entregar.map((f) => (
-                          <li key={f.trabajoId}>N.º {f.numero} · {datos ? textoProductos(datos, f.trabajoId) : ''}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {p.requiereConfirmacion && (
-                      <div role="radiogroup" aria-label={`Visita ${p.clienteNombre}`} className="grid grid-cols-3 gap-2 print:hidden">
-                        {CONFIRMACIONES.map((c) => (
-                          <label
-                            key={c.id}
-                            className={`flex min-h-14 cursor-pointer items-center justify-center rounded border-2 px-2 text-center text-lg ${
-                              p.confirmada === c.id ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-300 bg-white'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              className="sr-only"
-                              name={`visita-${p.clienteId}`}
-                              checked={p.confirmada === c.id}
-                              disabled={ocupado.current.has(`visita-${p.clienteId}`)}
-                              onChange={() => void marcar(p, c.id)}
-                            />
-                            {c.titulo}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <ul className="flex flex-col gap-3">{g.paradas.map(tarjetaParada)}</ul>
             </section>
           ))}
+          {gruposRetirar.length > 0 && (
+            <Plegable
+              titulo={`Pasar a retirar (${ruta.pasarARetirar.length})`}
+              detalle={`Clientes del recorrido sin nada que entregar${porConfirmar > 0 ? ` · ${porConfirmar} por confirmar` : ''}.`}
+            >
+              {gruposRetirar.map((g) => (
+                <section key={g.clave} aria-labelledby={`r-${g.clave}`} className="flex flex-col gap-2">
+                  <h3 id={`r-${g.clave}`} className="text-lg font-bold">{g.titulo}</h3>
+                  <ul className="flex flex-col gap-3">{g.paradas.map(tarjetaParada)}</ul>
+                </section>
+              ))}
+            </Plegable>
+          )}
           {otroDia > 0 && (
             <p className="text-slate-700">
               Hay {unidades(otroDia)} listo{otroDia === 1 ? '' : 's'} para otros días de ruta (no entra en esta fecha).
@@ -235,8 +238,9 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
             etiquetaEntregar="Despachar"
             alEntregar={puedeEntregar(usuario.rol) ? (f) => {
               setAviso('')
-              setEntregando({ trabajoId: f.trabajoId, titulo: 'Despachar por encomienda' })
+              setEntregando({ trabajoId: f.trabajoId, titulo: 'Despachar por encomienda', conTransporte: true })
             } : undefined}
+            transporteDe={(f) => trabajoPorId.get(f.trabajoId)?.transporte}
           />
         </>
       )}
@@ -245,7 +249,7 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
 }
 
 function FilasSueltas({
-  titulo, ayuda, filas, datos, ocupado, alCambiarSalida, alEntregar, etiquetaEntregar,
+  titulo, ayuda, filas, datos, ocupado, alCambiarSalida, alEntregar, etiquetaEntregar, transporteDe,
 }: {
   titulo: string
   ayuda?: string
@@ -255,6 +259,8 @@ function FilasSueltas({
   alCambiarSalida: (f: FilaListo, s: Modalidad) => void
   alEntregar?: (f: FilaListo) => void
   etiquetaEntregar?: string
+  /** Transporte ya anotado del trabajo (encomienda despachada en parte). */
+  transporteDe?: (f: FilaListo) => string | undefined
 }) {
   if (filas.length === 0) return null
   const id = `s-${titulo.replace(/\W+/g, '-')}`
@@ -270,6 +276,7 @@ function FilasSueltas({
               <span className="text-sm text-slate-700">N.º {f.numero} · {AREAS[f.area]}</span>
             </div>
             <p>{datos ? textoProductos(datos, f.trabajoId) : `${f.listas} listas`}</p>
+            {transporteDe?.(f) && <p className="text-slate-700">Transporte: {transporteDe(f)}</p>}
             <div className="flex flex-wrap items-end gap-2 print:hidden">
               <label className="flex flex-1 flex-col gap-1 text-sm text-slate-700">
                 Salida
@@ -299,9 +306,11 @@ function FilasSueltas({
 }
 
 function VisitaExtra({
-  clientes, alAgregar, ocupado, error,
+  clientes, enRuta, alAgregar, ocupado, error,
 }: {
   clientes: Cliente[]
+  /** Clientes que ya están en la ruta de la fecha (con o sin entregas). */
+  enRuta: ReadonlySet<string>
   alAgregar: (c: Cliente, nota: string) => void
   ocupado: boolean
   error: string
@@ -333,7 +342,13 @@ function VisitaExtra({
           </div>
           <button type="button" className={botonClaro} onClick={() => { setCliente(null); setBusqueda('') }}>Cambiar cliente</button>
         </div>
-      ) : (
+      ) : null}
+      {cliente && enRuta.has(cliente.id) && (
+        <p role="status" className="rounded bg-amber-50 p-3 text-amber-900">
+          {cliente.nombre} ya está en la ruta de este día. Si agregas la visita, quedará marcada como solicitada (con tu nota).
+        </p>
+      )}
+      {cliente ? null : (
         <div className="flex flex-col gap-2">
           <label className="flex flex-col gap-1 text-lg font-semibold">
             Cliente

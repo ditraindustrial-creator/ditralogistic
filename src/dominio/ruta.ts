@@ -24,7 +24,13 @@ export interface Parada {
 }
 
 export interface RutaDelDia {
+  /** Paradas con algo que entregar por ruta propia (van primero). */
   paradas: Parada[]
+  /**
+   * Paradas sin nada que entregar: todos los demás clientes cuyo recorrido sale ese día, y las
+   * visitas extra (solicitadas o confirmadas "sí") sin entregas. Se pasa a retirar.
+   */
+  pasarARetirar: Parada[]
   /** Listo para salir por ruta propia, de clientes sin recorrido asignado (o con un recorrido que ya no existe). */
   sinRecorrido: FilaListo[]
   /** Listo para que el cliente retire en el mostrador (salida = cliente). */
@@ -35,12 +41,25 @@ export interface RutaDelDia {
 
 const porNombre = (a: FilaListo, b: FilaListo) => a.clienteNombre.localeCompare(b.clienteNombre, 'es') || a.numero - b.numero
 
+/** Ordena paradas (sin modificar la lista recibida): por recorrido (nombre), las extra al final, y por cliente. */
+export function ordenarParadas(paradas: Parada[]): Parada[] {
+  return [...paradas].sort((a, b) => {
+    if (a.recorridoId !== b.recorridoId) {
+      if (a.recorridoNombre === null) return 1
+      if (b.recorridoNombre === null) return -1
+      return a.recorridoNombre.localeCompare(b.recorridoNombre, 'es') || (a.recorridoId! < b.recorridoId! ? -1 : 1)
+    }
+    return a.clienteNombre.localeCompare(b.clienteNombre, 'es')
+  })
+}
+
 /**
- * Ruta de un día (`fecha` = 'YYYY-MM-DD', día calendario de Chile). Para el día de la semana de la
- * fecha entran: los clientes cuyo recorrido sale ese día y tienen algo listo para entregar por ruta
- * propia, y cualquier cliente con una visita ese día que fue solicitada o confirmada "sí" (hay
- * retiro). Una visita confirmada "no" no oculta la parada: sale marcada. Las paradas de recorridos
- * lejanos requieren confirmación. Sábado y domingo no hay ruta.
+ * Ruta de un día (`fecha` = 'YYYY-MM-DD', día calendario de Chile). Entran TODOS los clientes cuyo
+ * recorrido sale ese día de la semana, y cualquier otro cliente con una visita ese día que fue
+ * solicitada o confirmada "sí" (parada extra). Los que tienen algo listo para entregar por ruta
+ * propia van en `paradas`; los demás en `pasarARetirar`. Una visita confirmada "no" no oculta la
+ * parada: sale marcada. Requieren confirmación las paradas de clientes cuyo recorrido es lejano
+ * (también si son una visita extra fuera de su día). Sábado y domingo no hay ruta.
  *
  * Nada listo desaparece: lo de clientes sin recorrido va a `sinRecorrido`, y lo que retira el cliente
  * o va por encomienda (según la modalidad de salida del trabajo) va a sus propias listas.
@@ -82,7 +101,7 @@ export function armarRuta(
       dia: delDia?.dia ?? null,
       entregar: [],
       confirmada: visita?.confirmada ?? 'sin_respuesta',
-      requiereConfirmacion: (delDia?.lejano ?? false) || (visita?.requiereConfirmacion ?? false),
+      requiereConfirmacion: (recorrido?.lejano ?? false) || (visita?.requiereConfirmacion ?? false),
       solicitada: visita?.solicitada ?? false,
     }
     if (visita) p.visitaId = visita.id
@@ -91,12 +110,12 @@ export function armarRuta(
   }
 
   if (dia <= 5) {
-    for (const v of visitaPorCliente.values()) {
-      if (v.solicitada || v.confirmada === 'si') paradas.set(v.clienteId, crearParada(v.clienteId, 'Cliente desconocido'))
+    for (const c of clientes) {
+      if (recorridoDe(c.id)?.dia === dia) paradas.set(c.id, crearParada(c.id, c.nombre))
     }
-    for (const f of porRuta) {
-      if (paradas.has(f.clienteId)) continue
-      if (recorridoDe(f.clienteId)?.dia === dia) paradas.set(f.clienteId, crearParada(f.clienteId, f.clienteNombre))
+    for (const v of visitaPorCliente.values()) {
+      if (paradas.has(v.clienteId)) continue
+      if (v.solicitada || v.confirmada === 'si') paradas.set(v.clienteId, crearParada(v.clienteId, 'Cliente desconocido'))
     }
   }
 
@@ -107,17 +126,15 @@ export function armarRuta(
     else if (!recorridoDe(f.clienteId)) sinRecorrido.push(f)
   }
 
-  const orden = [...paradas.values()]
-  for (const p of orden) p.entregar.sort((a, b) => a.numero - b.numero)
-  orden.sort((a, b) => {
-    if (a.recorridoId !== b.recorridoId) {
-      if (a.recorridoNombre === null) return 1
-      if (b.recorridoNombre === null) return -1
-      return a.recorridoNombre.localeCompare(b.recorridoNombre, 'es') || (a.recorridoId! < b.recorridoId! ? -1 : 1)
-    }
-    return a.clienteNombre.localeCompare(b.clienteNombre, 'es')
-  })
-  return { paradas: orden, sinRecorrido: sinRecorrido.sort(porNombre), retiranEnMostrador, porEncomienda }
+  const todas = [...paradas.values()]
+  for (const p of todas) p.entregar.sort((a, b) => a.numero - b.numero)
+  return {
+    paradas: ordenarParadas(todas.filter((p) => p.entregar.length > 0)),
+    pasarARetirar: ordenarParadas(todas.filter((p) => p.entregar.length === 0)),
+    sinRecorrido: sinRecorrido.sort(porNombre),
+    retiranEnMostrador,
+    porEncomienda,
+  }
 }
 
 /** Error de regla de negocio en visitas; el mensaje está en español y se muestra tal cual. */

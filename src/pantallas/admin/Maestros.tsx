@@ -127,6 +127,8 @@ function Importador({
           className={campo}
           onChange={(e) => {
             void alElegirArchivo(e.target.files?.[0])
+            // Se vacía para que elegir de nuevo el mismo archivo (corregido, con el mismo nombre) vuelva a leerlo.
+            e.target.value = ''
           }}
         />
       </label>

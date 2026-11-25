@@ -1,14 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { lineasEntregables } from '../../dominio/entrega'
-import { diaLocal, diaSemana } from '../../dominio/fechas'
+import { diaSemana } from '../../dominio/fechas'
 import { resumenListo } from '../../dominio/listo'
-import { armarRuta, fechaValida, type Parada } from '../../dominio/ruta'
+import { armarRuta, ErrorVisita, fechaValida, ordenarParadas, type Confirmacion, type Parada } from '../../dominio/ruta'
 import type { Cliente, UsuarioActual } from '../../dominio/tipos'
 import Entrega from '../entrega/Entrega'
 import Recepcion from '../recepcion/Recepcion'
 import { useDatosEnVivo } from '../useDatosEnVivo'
-import { agruparParadas, ESTADO_VISITA, fechaLarga, textoProductos, useVisitas } from './comun'
+import { useFechaPorDefecto } from '../useFechaPorDefecto'
+import { agruparParadas, ControlVisita, ESTADO_VISITA, fechaLarga, Plegable, textoProductos, useVisitas } from './comun'
+
+const ERROR_VISITA = 'No se pudo guardar la visita. Revisa tu conexión e inténtalo de nuevo.'
+const elMismoDia = (hoy: string) => hoy
 
 const campo = 'min-h-12 w-full rounded border bg-white p-3 text-lg'
 const botonGrande = 'min-h-14 rounded bg-teal-700 px-5 py-3 text-xl font-semibold text-white disabled:opacity-50'
@@ -20,18 +24,44 @@ type Panel =
 
 export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: UsuarioActual }) {
   const { datos, error: errorCarga, conectado, recargar } = useDatosEnVivo(repo)
-  const [fecha, setFecha] = useState(() => diaLocal(new Date().toISOString()))
-  const { visitas, error: errorVisitas } = useVisitas(repo, fecha)
+  // Hoy en Santiago; se recalcula si la app queda abierta de un día para otro (salvo fecha elegida).
+  const [fecha, elegirFecha] = useFechaPorDefecto(elMismoDia)
+  const { visitas, error: errorVisitas, recargar: recargarVisitas } = useVisitas(repo, fecha)
   const [elegido, setElegido] = useState('')
   const [panel, setPanel] = useState<Panel | null>(null)
+  const [errorVisita, setErrorVisita] = useState('')
+  const marcando = useRef(new Set<string>())
+  const [, repintar] = useState(0)
 
   const ruta = useMemo(
     () => (datos && visitas ? armarRuta(fecha, resumenListo(datos), datos.clientes, datos.recorridos, visitas) : null),
     [datos, visitas, fecha],
   )
-  const grupos = useMemo(() => agruparParadas(ruta?.paradas ?? [], datos?.recorridos ?? []), [ruta, datos])
+  // Un grupo por recorrido con todas sus paradas: primero las de entregar y, aparte, las de pasar a retirar.
+  const grupos = useMemo(
+    () => agruparParadas(ordenarParadas([...(ruta?.paradas ?? []), ...(ruta?.pasarARetirar ?? [])]), datos?.recorridos ?? []),
+    [ruta, datos],
+  )
   const grupo = grupos.find((g) => g.clave === elegido) ?? grupos[0]
   const trabajoPorId = useMemo(() => new Map((datos?.trabajos ?? []).map((t) => [t.id, t])), [datos])
+
+  // El chofer marca la visita en terreno (RLS: de hoy en adelante). Una a la vez por cliente: un doble toque no duplica.
+  async function marcar(p: Parada, valor: Confirmacion) {
+    const clave = p.clienteId
+    if (marcando.current.has(clave)) return
+    marcando.current.add(clave)
+    repintar((n) => n + 1)
+    setErrorVisita('')
+    try {
+      await repo.marcarVisita(fecha, p.clienteId, valor)
+      await recargarVisitas()
+    } catch (e) {
+      setErrorVisita(e instanceof ErrorVisita ? e.message : ERROR_VISITA)
+    } finally {
+      marcando.current.delete(clave)
+      repintar((n) => n + 1)
+    }
+  }
 
   function tarjeta(p: Parada) {
     const cliente = datos?.clientes.find((c) => c.id === p.clienteId)
@@ -44,6 +74,7 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
           </p>
         )}
         {p.nota && <p className="text-slate-700">Nota: {p.nota}</p>}
+        <ControlVisita parada={p} ocupado={marcando.current.has(p.clienteId)} alMarcar={(c) => void marcar(p, c)} />
 
         {p.entregar.length === 0 ? (
           <p className="text-lg text-slate-600">Sin unidades listas para esta visita.</p>
@@ -102,7 +133,7 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
           value={fecha}
           onChange={(e) => {
             if (fechaValida(e.target.value)) {
-              setFecha(e.target.value)
+              elegirFecha(e.target.value)
               setPanel(null)
             }
           }}
@@ -136,6 +167,7 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
       {!conectado && <p role="status" className="text-sm text-amber-700">Reconectando…</p>}
       {errorCarga && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{errorCarga}</p>}
       {errorVisitas && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{errorVisitas}</p>}
+      {errorVisita && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{errorVisita}</p>}
       {!ruta && !errorCarga && !errorVisitas && <p>Cargando…</p>}
 
       {ruta && grupos.length > 1 && (
@@ -157,10 +189,19 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
       {ruta && !grupo && (
         <p className="text-lg text-slate-700">{diaSemana(fecha) > 5 ? 'Sábado y domingo no hay ruta.' : 'No hay paradas para esta fecha.'}</p>
       )}
-      {grupo && (
+      {grupo && grupo.paradas.some((p) => p.entregar.length > 0) && (
         <ul className="flex flex-col gap-4" aria-label={grupo.titulo}>
-          {grupo.paradas.map(tarjeta)}
+          {grupo.paradas.filter((p) => p.entregar.length > 0).map(tarjeta)}
         </ul>
+      )}
+      {grupo && grupo.paradas.some((p) => p.entregar.length === 0) && (
+        <Plegable
+          key={grupo.clave}
+          titulo={`Pasar a retirar (${grupo.paradas.filter((p) => p.entregar.length === 0).length})`}
+          detalle="Clientes de esta ruta sin nada que entregar: pasar por si hay retiro."
+        >
+          <ul className="flex flex-col gap-4">{grupo.paradas.filter((p) => p.entregar.length === 0).map(tarjeta)}</ul>
+        </Plegable>
       )}
     </div>
   )

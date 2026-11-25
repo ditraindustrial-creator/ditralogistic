@@ -53,7 +53,7 @@ describe('armarRuta: un martes', () => {
   const f6 = fila('c6', 2) // sin recorrido
   const filas = [f1, f2, f3, f4, f5, f6]
 
-  it('incluye solo clientes con recorrido de martes y algo listo, ordenados por recorrido y luego por nombre', () => {
+  it('paradas: clientes con recorrido de martes y algo listo, ordenados por recorrido y luego por nombre', () => {
     const { paradas } = armarRuta(MARTES, filas, clientes, recorridos, [])
     expect(paradas.map((p) => [p.recorridoNombre, p.clienteNombre])).toEqual([
       ['Costa', 'Costa Print'],
@@ -64,6 +64,20 @@ describe('armarRuta: un martes', () => {
       clienteId: 'c1', clienteNombre: 'Imprenta Sur', recorridoId: 'rN', recorridoNombre: 'Norte', dia: 2,
       entregar: [f1], confirmada: 'sin_respuesta', requiereConfirmacion: false, solicitada: false,
     })
+  })
+
+  it('"Pasar a retirar": TODO cliente cuyo recorrido sale ese día, aunque no tenga nada que entregar', () => {
+    const r = armarRuta(MARTES, filas, clientes, recorridos, [])
+    expect(r.pasarARetirar.map((p) => [p.recorridoNombre, p.clienteNombre, p.entregar.length])).toEqual([['Norte', 'Sin listo', 0]])
+    // sin ningún trabajo: igual aparecen todos los clientes del martes
+    const vacia = armarRuta(MARTES, [], clientes, recorridos, [])
+    expect(vacia.paradas).toEqual([])
+    expect(vacia.pasarARetirar.map((p) => p.clienteId)).toEqual(['c3', 'c2', 'c1', 'c4'])
+  })
+
+  it('un cliente lejano sin nada que entregar sale en "Pasar a retirar" y requiere confirmación (para llamarlo el día antes)', () => {
+    const r = armarRuta(MARTES, [f1], clientes, recorridos, [])
+    expect(r.pasarARetirar.find((p) => p.clienteId === 'c3')).toMatchObject({ recorridoId: 'rC', requiereConfirmacion: true, entregar: [] })
   })
 
   it('agrega al cliente con visita solicitada ese día aunque no le toque ni tenga nada listo', () => {
@@ -78,9 +92,21 @@ describe('armarRuta: un martes', () => {
       // su recorrido no sale el martes: es una parada extra, sin recorrido del día
       recorridoId: null, recorridoNombre: null, dia: null,
     })
-    expect(paradas.find((p) => p.clienteId === 'c4')).toMatchObject({ solicitada: true, recorridoId: 'rN', entregar: [] })
+    expect(paradas.map((p) => p.clienteId)).not.toContain('c4')
     // las paradas extra van al final
     expect(paradas.at(-1)?.clienteId).toBe('c5')
+  })
+
+  it('un cliente con visita solicitada y nada que entregar va a "Pasar a retirar", marcado como solicitado', () => {
+    const r = armarRuta(MARTES, filas, clientes, recorridos, [visita('c4', MARTES, { solicitada: true })])
+    expect(r.pasarARetirar.find((p) => p.clienteId === 'c4')).toMatchObject({ solicitada: true, recorridoId: 'rN', entregar: [] })
+  })
+
+  it('una visita extra de un cliente de recorrido lejano (de otro día) requiere confirmación', () => {
+    const r = armarRuta(MARTES, filas, clientes, recorridos, [visita('c7', MARTES, { solicitada: true })])
+    expect(r.pasarARetirar.find((p) => p.clienteId === 'c7')).toMatchObject({ recorridoId: null, solicitada: true, requiereConfirmacion: true })
+    const r2 = armarRuta(MARTES, filas, clientes, recorridos, [visita('c5', MARTES, { solicitada: true })])
+    expect(r2.paradas.find((p) => p.clienteId === 'c5')?.requiereConfirmacion).toBe(false)
   })
 
   it('una parada de un recorrido lejano requiere confirmación', () => {
@@ -94,25 +120,27 @@ describe('armarRuta: un martes', () => {
     expect(paradas.find((p) => p.clienteId === 'c3')).toMatchObject({ confirmada: 'no', entregar: [f3], visitaId: `v-c3-${MARTES}` })
   })
 
-  it('una visita confirmada "sí" incluye al cliente aunque no tenga nada listo (hay retiro)', () => {
-    const { paradas } = armarRuta(MARTES, filas, clientes, recorridos, [visita('c4', MARTES, { confirmada: 'si' })])
-    expect(paradas.find((p) => p.clienteId === 'c4')).toMatchObject({ confirmada: 'si', solicitada: false, entregar: [] })
+  it('una visita confirmada "sí" de un cliente de otro día lo incluye aunque no tenga nada listo (hay retiro)', () => {
+    const r = armarRuta(MARTES, filas, clientes, recorridos, [visita('c4', MARTES, { confirmada: 'si' }), visita('c7', MARTES, { confirmada: 'si' })])
+    expect(r.pasarARetirar.find((p) => p.clienteId === 'c4')).toMatchObject({ confirmada: 'si', solicitada: false, entregar: [] })
+    expect(r.pasarARetirar.find((p) => p.clienteId === 'c7')).toMatchObject({ confirmada: 'si', recorridoId: null })
   })
 
-  it('una visita "no" o "sin respuesta" sin nada listo ni solicitud no agrega parada', () => {
-    const { paradas } = armarRuta(MARTES, filas, clientes, recorridos, [
+  it('una visita "no" del cliente del día lo deja visible y marcado; "sin respuesta" de un cliente de otro día no lo agrega', () => {
+    const r = armarRuta(MARTES, filas, clientes, recorridos, [
       visita('c4', MARTES, { confirmada: 'no' }),
       visita('c5', MARTES, { confirmada: 'sin_respuesta' }),
     ])
-    expect(paradas.map((p) => p.clienteId)).not.toContain('c4')
-    expect(paradas.map((p) => p.clienteId)).not.toContain('c5')
+    expect(r.pasarARetirar.find((p) => p.clienteId === 'c4')?.confirmada).toBe('no')
+    expect([...r.paradas, ...r.pasarARetirar].map((p) => p.clienteId)).not.toContain('c5')
   })
 
   it('los clientes sin recorrido (o con un recorrido que ya no existe) no salen en la ruta, sino en sinRecorrido', () => {
     const f8 = fila('c8', 1)
     const fDesconocido = fila('c-x', 2)
     const r = armarRuta(MARTES, [...filas, f8, fDesconocido], clientes, recorridos, [])
-    expect(r.paradas.map((p) => p.clienteId)).not.toContain('c6')
+    expect([...r.paradas, ...r.pasarARetirar].map((p) => p.clienteId)).not.toContain('c6')
+    expect([...r.paradas, ...r.pasarARetirar].map((p) => p.clienteId)).not.toContain('c8')
     expect(r.sinRecorrido).toEqual([f8, fDesconocido, f6].sort((a, b) => a.clienteNombre.localeCompare(b.clienteNombre, 'es')))
   })
 
@@ -135,10 +163,11 @@ describe('armarRuta: un martes', () => {
     expect(r.sinRecorrido).toEqual([f6])
   })
 
-  it('un cliente que solo tiene listo para retiro en mostrador no genera parada', () => {
+  it('un cliente que solo tiene listo para retiro en mostrador no genera parada de entrega (sí sale en "Pasar a retirar")', () => {
     const soloRetira = fila('c4', 3, 'cliente')
-    const { paradas } = armarRuta(MARTES, [soloRetira], clientes, recorridos, [])
-    expect(paradas).toEqual([])
+    const r = armarRuta(MARTES, [soloRetira], clientes, recorridos, [])
+    expect(r.paradas).toEqual([])
+    expect(r.pasarARetirar.find((p) => p.clienteId === 'c4')?.entregar).toEqual([])
   })
 
   it('varios trabajos listos del mismo cliente van en la misma parada, por número', () => {
@@ -152,18 +181,21 @@ describe('armarRuta: un martes', () => {
 describe('armarRuta: día de la semana en hora de Chile', () => {
   it('un lunes arma el recorrido de lunes', () => {
     const f = fila('c5', 1)
-    const { paradas } = armarRuta(LUNES, [f, fila('c1', 2)], clientes, recorridos, [])
-    expect(paradas.map((p) => p.clienteId)).toEqual(['c5'])
+    const r = armarRuta(LUNES, [f, fila('c1', 2)], clientes, recorridos, [])
+    expect(r.paradas.map((p) => p.clienteId)).toEqual(['c5'])
+    expect(r.pasarARetirar).toEqual([])
   })
   it('un viernes arma el recorrido de viernes (lejano: requiere confirmación)', () => {
-    const { paradas } = armarRuta(VIERNES, [fila('c7', 2), fila('c1', 2)], clientes, recorridos, [])
-    expect(paradas.map((p) => [p.clienteId, p.requiereConfirmacion])).toEqual([['c7', true]])
+    const r = armarRuta(VIERNES, [fila('c7', 2), fila('c1', 2)], clientes, recorridos, [])
+    expect(r.paradas.map((p) => [p.clienteId, p.requiereConfirmacion])).toEqual([['c7', true]])
+    expect(r.pasarARetirar).toEqual([])
   })
   it('un sábado no hay ruta, ni siquiera con visitas solicitadas; lo pendiente sigue listado', () => {
     const f6 = fila('c6', 2)
     const retira = fila('c1', 1, 'cliente')
     const r = armarRuta(SABADO, [fila('c1', 2), f6, retira], clientes, recorridos, [visita('c1', SABADO, { solicitada: true })])
     expect(r.paradas).toEqual([])
+    expect(r.pasarARetirar).toEqual([])
     expect(r.sinRecorrido).toEqual([f6])
     expect(r.retiranEnMostrador).toEqual([retira])
   })

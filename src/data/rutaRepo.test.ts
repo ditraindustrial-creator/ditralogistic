@@ -103,11 +103,39 @@ describe('memoryRepo.entregarUnidades', () => {
 })
 
 describe('memoryRepo: el chofer solo mueve de "listo" a la etapa final', () => {
-  it('no mueve dentro del taller, sí entrega', async () => {
+  it('no mueve dentro del taller; a la etapa final solo con entregarUnidades (0008)', async () => {
     const { r } = repo()
     await expect(r.moverUnidades('l2', 1, 'rec', 'listo')).rejects.toThrow('No tienes permiso para mover unidades de esta línea.')
-    await expect(r.moverUnidades('l2', 1, 'listo', 'fin')).resolves.toMatchObject({ cantidad: 1 })
+    await expect(r.moverUnidades('l2', 1, 'listo', 'fin')).rejects.toThrow(
+      'Las entregas se registran con «Entregar», anotando el número de guía o factura.',
+    )
+    await expect(r.entregarUnidades([{ lineaId: 'l2', cantidad: 1 }], 'G-1')).resolves.toBeUndefined()
     await expect(repo('secretaria').r.moverUnidades('l2', 1, 'rec', 'listo')).resolves.toMatchObject({ cantidad: 1 })
+  })
+
+  it('nadie lleva unidades a la etapa final con moverUnidades, ni gestión', async () => {
+    for (const rol of ['secretaria', 'admin', 'jefe_taller'] as const) {
+      await expect(repo(rol).r.moverUnidades('l1', 1, 'listo', 'fin')).rejects.toThrow(
+        'Las entregas se registran con «Entregar», anotando el número de guía o factura.',
+      )
+    }
+  })
+
+  it('sacar unidades de la etapa final (corrección): gestión sí; chofer y operarios no', async () => {
+    const datos = {
+      etapas, trabajos: [trab('t1')], clientes,
+      lineas: [{ id: 'l1', trabajoId: 't1', producto: 'Cuchillo', cantidad: 4 }],
+      movimientos: [mov('m1', 'l1', 4, null, 'rec'), mov('m2', 'l1', 4, 'rec', 'listo'), mov('m3', 'l1', 2, 'listo', 'fin')],
+    }
+    const como = (rol: Rol) => crearMemoryRepo({ ...datos, usuario: { id: 'u', nombre: 'U', rol } })
+    for (const rol of ['chofer', 'operario_afilado'] as const) {
+      await expect(como(rol).moverUnidades('l1', 1, 'fin', 'listo')).rejects.toThrow(
+        'Solo secretaría, jefe de taller o administración pueden sacar unidades de una etapa de entrega.',
+      )
+    }
+    for (const rol of ['secretaria', 'jefe_taller', 'admin'] as const) {
+      await expect(como(rol).moverUnidades('l1', 1, 'fin', 'listo')).resolves.toMatchObject({ etapaOrigenId: 'fin' })
+    }
   })
 })
 
@@ -125,6 +153,52 @@ describe('memoryRepo.actualizarSalida', () => {
     )
     await expect(repo('operario_afilado').r.actualizarSalida('t1', 'cliente')).rejects.toThrow(
       'No se pudo cambiar la salida (el trabajo no existe o no tienes permiso).',
+    )
+  })
+})
+
+describe('memoryRepo: reintentos con clave de idempotencia', () => {
+  const CLAVE = '11111111-1111-4111-8111-111111111111'
+  it('entregarUnidades con la misma clave dos veces entrega una sola vez', async () => {
+    const { r } = repo()
+    await r.entregarUnidades([{ lineaId: 'l1', cantidad: 2 }], 'G-1', { clave: CLAVE })
+    await r.entregarUnidades([{ lineaId: 'l1', cantidad: 2 }], ' G-1 ', { clave: CLAVE })
+    const d = await r.cargarTodo()
+    expect(unidades(d.movimientos, 'l1', 'fin')).toBe(2)
+    expect(d.trabajos.find((t) => t.id === 't1')?.guiaDespacho).toBe('G-1')
+  })
+  it('la misma clave con otros datos u otro usuario es un error, sin entregar', async () => {
+    const trabajos = [trab('t1')]
+    const lineas: Linea[] = [{ id: 'l1', trabajoId: 't1', producto: 'Cuchillo', cantidad: 4 }]
+    const movimientos = [mov('m1', 'l1', 4, null, 'rec'), mov('m2', 'l1', 4, 'rec', 'listo')]
+    const cuentas = {
+      a: { clave: 'x', usuario: { id: 'ua', nombre: 'A', rol: 'chofer' as const } },
+      b: { clave: 'x', usuario: { id: 'ub', nombre: 'B', rol: 'chofer' as const } },
+    }
+    const r = crearMemoryRepo({ etapas, trabajos, lineas, movimientos, clientes, cuentas })
+    await r.iniciarSesion('a', 'x')
+    await r.entregarUnidades([{ lineaId: 'l1', cantidad: 1 }], 'G-1', { clave: CLAVE })
+    await expect(r.entregarUnidades([{ lineaId: 'l1', cantidad: 2 }], 'G-1', { clave: CLAVE })).rejects.toThrow(
+      new ErrorEntrega('Esta entrega no se pudo registrar. Cierra el panel, ábrelo de nuevo y revisa lo que ya quedó entregado.'),
+    )
+    await r.iniciarSesion('b', 'x')
+    await expect(r.entregarUnidades([{ lineaId: 'l1', cantidad: 1 }], 'G-1', { clave: CLAVE })).rejects.toThrow(ErrorEntrega)
+    expect(unidades((await r.cargarTodo()).movimientos, 'l1', 'fin')).toBe(1)
+  })
+  it('una entrega fallida no deja la clave tomada', async () => {
+    const { r } = repo()
+    await expect(r.entregarUnidades([{ lineaId: 'l2', cantidad: 2 }], 'G-1', { clave: CLAVE })).rejects.toThrow('faltan 1')
+    await r.entregarUnidades([{ lineaId: 'l2', cantidad: 1 }], 'G-1', { clave: CLAVE })
+    expect(unidades((await r.cargarTodo()).movimientos, 'l2', 'fin')).toBe(1)
+  })
+  it('anota el transporte en el trabajo entregado y valida su largo', async () => {
+    const { r } = repo()
+    await r.entregarUnidades([{ lineaId: 'l1', cantidad: 1 }], 'G-1', { transporte: '  Starken 123 ' })
+    expect((await r.cargarTodo()).trabajos.find((t) => t.id === 't1')?.transporte).toBe('Starken 123')
+    await r.entregarUnidades([{ lineaId: 'l1', cantidad: 1 }], 'G-2', { transporte: ' ' })
+    expect((await r.cargarTodo()).trabajos.find((t) => t.id === 't1')?.transporte).toBe('Starken 123')
+    await expect(r.entregarUnidades([{ lineaId: 'l1', cantidad: 1 }], 'G-3', { transporte: 'x'.repeat(121) })).rejects.toThrow(
+      new ErrorEntrega('El transporte puede tener hasta 120 caracteres.'),
     )
   })
 })
@@ -151,6 +225,15 @@ describe('memoryRepo: visitas', () => {
     expect(await r.listarVisitas(f)).toEqual([
       expect.objectContaining({ confirmada: 'si', solicitada: true, nota: 'Llamó por la guillotina' }),
     ])
+  })
+
+  it('agregarVisitaExtra sin nota no borra la nota que ya tenía', async () => {
+    const f = habil(1)
+    const { r } = repo('secretaria')
+    await r.agregarVisitaExtra(f, 'c1', 'Llamó')
+    await r.agregarVisitaExtra(f, 'c1', '  ')
+    await r.agregarVisitaExtra(f, 'c1')
+    expect(await r.listarVisitas(f)).toEqual([expect.objectContaining({ solicitada: true, nota: 'Llamó' })])
   })
 
   it('valida fecha, día hábil, cliente y estado', async () => {

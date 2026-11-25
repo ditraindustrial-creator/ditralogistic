@@ -21,3 +21,15 @@ const ROLES_QUE_ENTREGAN: readonly Rol[] = ['admin', 'secretaria', 'jefe_taller'
 export function puedeEntregar(rol: Rol): boolean {
   return ROLES_QUE_ENTREGAN.includes(rol)
 }
+
+const GESTION: readonly Rol[] = ['admin', 'secretaria', 'jefe_taller']
+
+/** Roles de gestión (igual que es_gestion() en la base): ven y corrigen todo lo operativo. */
+export function esGestion(rol: Rol): boolean {
+  return GESTION.includes(rol)
+}
+
+/** Quién puede crear un cliente nuevo desde Recepción (RLS: clientes_gestion y clientes_chofer_crea). */
+export function puedeCrearClientes(rol: Rol): boolean {
+  return esGestion(rol) || rol === 'chofer'
+}

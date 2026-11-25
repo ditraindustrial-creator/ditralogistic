@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { crearRepoConCliente, leerTodas } from './supabaseRepo'
+import { crearRepoConCliente, errorDeCliente, leerTodas } from './supabaseRepo'
+import { ErrorCliente } from '../dominio/maestros'
 
 type Fila = Record<string, unknown>
 
@@ -124,5 +125,45 @@ describe('supabaseRepo con más filas que el tope de PostgREST', () => {
     const repo = crearRepoConCliente(sb)
     expect(await repo.guardarClientes([{ nombre: 'Cliente 1400', rut: '1401-9' }])).toEqual({ creados: 0, actualizados: 0, sinCambios: 1 })
     expect(llamadas.insert).toBe(0)
+  })
+})
+
+describe('supabaseRepo.crearCliente', () => {
+  function falsoInsert(respuesta: { data: unknown; error: { code?: string; message: string } | null }) {
+    const log: unknown[] = []
+    const sb = {
+      from: (t: string) => ({
+        insert: (fila: unknown) => {
+          log.push([t, fila])
+          return { select: (cols: string) => ({ single: () => { log.push(cols); return Promise.resolve(respuesta) } }) }
+        },
+      }),
+    }
+    return { repo: crearRepoConCliente(sb as unknown as SupabaseClient), log }
+  }
+  it('inserta el cliente validado (RUT normalizado) y devuelve la fila creada', async () => {
+    const fila = { id: 'n1', nombre: 'Ferretería', rut: '12345678-5', contacto: null, direccion: 'Calle 1', recorrido_id: 'r1' }
+    const { repo, log } = falsoInsert({ data: fila, error: null })
+    const c = await repo.crearCliente({ nombre: ' Ferretería ', rut: '12.345.678-5', direccion: 'Calle 1', recorridoId: 'r1' })
+    expect(c).toEqual({ id: 'n1', nombre: 'Ferretería', rut: '12345678-5', direccion: 'Calle 1', recorridoId: 'r1' })
+    expect(log[0]).toEqual(['clientes', { nombre: 'Ferretería', rut: '12345678-5', contacto: null, direccion: 'Calle 1', recorrido_id: 'r1' }])
+  })
+  it('no llama a la base si los datos no son válidos', async () => {
+    const { repo, log } = falsoInsert({ data: null, error: null })
+    await expect(repo.crearCliente({ nombre: 'X', rut: 'abc' })).rejects.toThrow('no es válido')
+    expect(log).toEqual([])
+  })
+  it('el RUT repetido (índice único) y los demás errores llegan en español, nunca el mensaje técnico', async () => {
+    const dup = falsoInsert({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "clientes_rut_unico"' } })
+    await expect(dup.repo.crearCliente({ nombre: 'X', rut: '1-9' })).rejects.toThrow(
+      new ErrorCliente('Ya existe un cliente con ese RUT. Búscalo por nombre o RUT en vez de crearlo de nuevo.'),
+    )
+    expect(errorDeCliente({ code: '42501', message: 'new row violates row-level security policy for table "clientes"' }).message).toBe(
+      'No tienes permiso para crear clientes.',
+    )
+    expect(errorDeCliente({ code: '42501', message: 'permission denied for table clientes' }).message).toBe('No tienes permiso para crear clientes.')
+    expect(errorDeCliente({ message: 'TypeError: Failed to fetch' }).message).toBe(
+      'No se pudo guardar el cliente. Revisa tu conexión e inténtalo de nuevo.',
+    )
   })
 })

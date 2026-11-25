@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
+import { nuevaClave } from '../../dominio/clave'
+import { puedeCrearClientes } from '../../dominio/permisos'
 import type { Area, Cliente, Modalidad, Producto, Trabajo, UsuarioActual } from '../../dominio/tipos'
 import {
   ErrorTrabajo,
@@ -8,6 +10,7 @@ import {
   validarTrabajoNuevo,
   type DatosTrabajoNuevo,
 } from '../../dominio/trabajo'
+import ClienteNuevo from './ClienteNuevo'
 
 const AREAS: { id: Area; titulo: string }[] = [
   { id: 'afilado', titulo: 'Afilado' },
@@ -73,8 +76,14 @@ export default function Recepcion({
   const modalidadInicial: Modalidad = usuario.rol === 'chofer' || clienteInicial ? 'ruta_propia' : 'cliente'
   const siguienteClave = useRef(2)
   const enCurso = useRef(false)
+  // Clave de idempotencia del formulario: se conserva mientras está abierto y tras un error (el
+  // reintento la reusa: si la respuesta se perdió, la base devuelve el trabajo ya creado).
+  const claveSolicitud = useRef(nuevaClave())
+  const creaClientes = puedeCrearClientes(usuario.rol)
 
-  const [clientes, setClientes] = useState<Cliente[]>([])
+  // null mientras cargan.
+  const [clientes, setClientes] = useState<Cliente[] | null>(null)
+  const [creandoCliente, setCreandoCliente] = useState(false)
   const [productos, setProductos] = useState<Producto[]>([])
   const [errorCarga, setErrorCarga] = useState('')
 
@@ -112,6 +121,8 @@ export default function Recepcion({
   }
 
   function limpiar() {
+    claveSolicitud.current = nuevaClave()
+    setCreandoCliente(false)
     setCliente(clienteInicial ?? null)
     setBusqueda('')
     setArea('afilado')
@@ -144,7 +155,7 @@ export default function Recepcion({
     enCurso.current = true
     setGuardando(true)
     try {
-      const creado = await repo.crearTrabajo(datos)
+      const creado = await repo.crearTrabajo(datos, claveSolicitud.current)
       setGuardado(creado)
       onCreado?.(creado)
     } catch (e) {
@@ -166,17 +177,13 @@ export default function Recepcion({
     )
   }
 
-  const sugeridos = cliente ? [] : filtrarClientes(clientes, busqueda)
+  const lista = clientes ?? []
+  const sugeridos = cliente ? [] : filtrarClientes(lista, busqueda)
   const sugerenciasProductos = productos.filter((p) => p.area === area)
+  const sinClientes = clientes !== null && clientes.length === 0 && !errorCarga
 
   return (
-    <form
-      className="flex flex-col gap-5"
-      onSubmit={(e) => {
-        e.preventDefault()
-        void guardar()
-      }}
-    >
+    <div className="flex flex-col gap-5">
       {errorCarga && <p role="alert" className="text-red-700">{errorCarga}</p>}
 
       {cliente ? (
@@ -190,6 +197,19 @@ export default function Recepcion({
             Cambiar cliente
           </button>
         </div>
+      ) : creandoCliente ? (
+        <ClienteNuevo
+          repo={repo}
+          clientes={lista}
+          busqueda={busqueda}
+          alCrear={(c) => {
+            setClientes((cs) => [...(cs ?? []), c])
+            setCliente(c)
+            setBusqueda('')
+            setCreandoCliente(false)
+          }}
+          alCancelar={() => setCreandoCliente(false)}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           <label className="flex flex-col gap-1 text-lg font-semibold">
@@ -219,87 +239,105 @@ export default function Recepcion({
               ))}
             </ul>
           )}
-          {busqueda.trim() !== '' && sugeridos.length === 0 && clientes.length > 0 && (
+          {sinClientes && (
+            <p className="text-slate-700">
+              Aún no hay clientes cargados.{creaClientes ? ' Crea uno con «Cliente nuevo».' : ''}
+            </p>
+          )}
+          {busqueda.trim() !== '' && sugeridos.length === 0 && lista.length > 0 && (
             <p className="text-slate-600">No hay clientes con ese nombre o RUT.</p>
+          )}
+          {creaClientes && (
+            <button type="button" className={botonClaro} onClick={() => setCreandoCliente(true)}>
+              Cliente nuevo
+            </button>
           )}
         </div>
       )}
 
-      <Opciones nombre="area" titulo="Área" opciones={AREAS} valor={area} alCambiar={setArea} />
-      <Opciones nombre="entrada" titulo="¿Cómo llegó?" opciones={MODALIDADES} valor={entrada} alCambiar={setEntrada} />
+      <form
+        className="flex flex-col gap-5"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void guardar()
+        }}
+      >
+        <Opciones nombre="area" titulo="Área" opciones={AREAS} valor={area} alCambiar={setArea} />
+        <Opciones nombre="entrada" titulo="¿Cómo llegó?" opciones={MODALIDADES} valor={entrada} alCambiar={setEntrada} />
 
-      <fieldset className="flex flex-col gap-3">
-        <legend className="mb-1 text-lg font-semibold">Líneas</legend>
-        <datalist id="productos-sugeridos">
-          {sugerenciasProductos.map((p) => (
-            <option key={p.id} value={p.nombre}>{p.codigo}</option>
-          ))}
-        </datalist>
-        {lineas.map((l, i) => (
-          <div key={l.clave} className="flex items-end gap-2">
-            <input
-              aria-label={`Producto línea ${i + 1}`}
-              placeholder="Producto"
-              list="productos-sugeridos"
-              className={`${campo} flex-1`}
-              value={l.producto}
-              onChange={(e) => actualizarLinea(l.clave, { producto: e.target.value })}
-            />
-            <input
-              aria-label={`Cantidad línea ${i + 1}`}
-              placeholder="Cant."
-              inputMode="numeric"
-              className={`${campo} w-24`}
-              value={l.cantidad}
-              onChange={(e) => actualizarLinea(l.clave, { cantidad: e.target.value })}
-            />
-            {lineas.length > 1 && (
-              <button
-                type="button"
-                aria-label={`Quitar línea ${i + 1}`}
-                className={botonClaro}
-                onClick={() => setLineas((ls) => ls.filter((x) => x.clave !== l.clave))}
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        ))}
-        <button
-          type="button"
-          className={botonClaro}
-          onClick={() => setLineas((ls) => [...ls, { clave: siguienteClave.current++, producto: '', cantidad: '' }])}
-        >
-          Agregar línea
-        </button>
-      </fieldset>
-
-      <label className="flex min-h-12 items-center gap-3 text-lg">
-        <input type="checkbox" className="h-6 w-6" checked={urgente} onChange={(e) => setUrgente(e.target.checked)} />
-        Urgente
-      </label>
-      <label className="flex flex-col gap-1 text-lg">
-        Guía de retiro (opcional)
-        <input className={campo} value={guia} onChange={(e) => setGuia(e.target.value)} />
-      </label>
-      <label className="flex flex-col gap-1 text-lg">
-        Notas (opcional)
-        <textarea className={campo} rows={2} value={notas} onChange={(e) => setNotas(e.target.value)} />
-      </label>
-
-      {errores.length > 0 && (
-        <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-red-800">
-          <ul className="list-disc pl-5">
-            {errores.map((m) => (
-              <li key={m}>{m}</li>
+        <fieldset className="flex flex-col gap-3">
+          <legend className="mb-1 text-lg font-semibold">Líneas</legend>
+          <datalist id="productos-sugeridos">
+            {sugerenciasProductos.map((p) => (
+              <option key={p.id} value={p.nombre}>{p.codigo}</option>
             ))}
-          </ul>
-        </div>
-      )}
+          </datalist>
+          {lineas.map((l, i) => (
+            <div key={l.clave} className="flex items-end gap-2">
+              <input
+                aria-label={`Producto línea ${i + 1}`}
+                placeholder="Producto"
+                list="productos-sugeridos"
+                className={`${campo} flex-1`}
+                value={l.producto}
+                onChange={(e) => actualizarLinea(l.clave, { producto: e.target.value })}
+              />
+              <input
+                aria-label={`Cantidad línea ${i + 1}`}
+                placeholder="Cant."
+                inputMode="numeric"
+                className={`${campo} w-24`}
+                value={l.cantidad}
+                onChange={(e) => actualizarLinea(l.clave, { cantidad: e.target.value })}
+              />
+              {lineas.length > 1 && (
+                <button
+                  type="button"
+                  aria-label={`Quitar línea ${i + 1}`}
+                  className={botonClaro}
+                  onClick={() => setLineas((ls) => ls.filter((x) => x.clave !== l.clave))}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            className={botonClaro}
+            onClick={() => setLineas((ls) => [...ls, { clave: siguienteClave.current++, producto: '', cantidad: '' }])}
+          >
+            Agregar línea
+          </button>
+        </fieldset>
 
-      <button type="submit" className={botonGrande} disabled={guardando}>
-        {guardando ? 'Guardando…' : 'Guardar trabajo'}
-      </button>
-    </form>
+        <label className="flex min-h-12 items-center gap-3 text-lg">
+          <input type="checkbox" className="h-6 w-6" checked={urgente} onChange={(e) => setUrgente(e.target.checked)} />
+          Urgente
+        </label>
+        <label className="flex flex-col gap-1 text-lg">
+          Guía de retiro (opcional)
+          <input className={campo} value={guia} onChange={(e) => setGuia(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-1 text-lg">
+          Notas (opcional)
+          <textarea className={campo} rows={2} value={notas} onChange={(e) => setNotas(e.target.value)} />
+        </label>
+
+        {errores.length > 0 && (
+          <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-red-800">
+            <ul className="list-disc pl-5">
+              {errores.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <button type="submit" className={botonGrande} disabled={guardando}>
+          {guardando ? 'Guardando…' : 'Guardar trabajo'}
+        </button>
+      </form>
+    </div>
   )
 }

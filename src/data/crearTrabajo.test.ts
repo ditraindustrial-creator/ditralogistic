@@ -31,6 +31,48 @@ function crear(usuario: UsuarioActual | null = secretaria) {
   return { repo, trabajos, lineas }
 }
 
+describe('memoryRepo.crearTrabajo con clave de idempotencia', () => {
+  const CLAVE = '11111111-1111-4111-8111-111111111111'
+  it('el reintento con la misma clave devuelve el mismo trabajo y no crea otro', async () => {
+    const { repo, trabajos, lineas } = crear()
+    const a = await repo.crearTrabajo(datos, CLAVE)
+    const b = await repo.crearTrabajo(datos, CLAVE)
+    expect(b).toEqual(a)
+    expect(trabajos).toHaveLength(1)
+    expect(lineas).toHaveLength(2)
+    expect((await repo.cargarTodo()).movimientos).toHaveLength(2)
+  })
+  it('sin clave, o con otra clave, crea trabajos nuevos', async () => {
+    const { repo, trabajos } = crear()
+    await repo.crearTrabajo(datos)
+    await repo.crearTrabajo(datos)
+    await repo.crearTrabajo(datos, CLAVE)
+    await repo.crearTrabajo(datos, '22222222-2222-4222-8222-222222222222')
+    expect(trabajos).toHaveLength(4)
+  })
+  it('la clave de otro usuario es un error que no muestra ese trabajo', async () => {
+    const trabajos: Trabajo[] = []
+    const r = crearMemoryRepo({
+      etapas, trabajos, clientes: [{ id: 'c1', nombre: 'Cliente', rut: '1-9', recorridoId: null }],
+      cuentas: { a: { clave: 'x', usuario: secretaria }, b: { clave: 'x', usuario: { id: 'u2', nombre: 'Chofer', rol: 'chofer' } } },
+    })
+    await r.iniciarSesion('a', 'x')
+    await r.crearTrabajo(datos, CLAVE)
+    await r.iniciarSesion('b', 'x')
+    await expect(r.crearTrabajo(datos, CLAVE)).rejects.toThrow(
+      new ErrorTrabajo('Esta recepción no se pudo guardar. Cierra el formulario, ábrelo de nuevo e inténtalo otra vez.'),
+    )
+    expect(trabajos).toHaveLength(1)
+  })
+  it('un intento fallido no deja la clave tomada; una clave mal formada se rechaza', async () => {
+    const { repo, trabajos } = crear()
+    await expect(repo.crearTrabajo({ ...datos, clienteId: 'zz' }, CLAVE)).rejects.toThrow('El cliente no existe.')
+    await repo.crearTrabajo(datos, CLAVE)
+    expect(trabajos).toHaveLength(1)
+    await expect(repo.crearTrabajo(datos, 'abc')).rejects.toThrow('La clave de la solicitud no es válida.')
+  })
+})
+
 describe('memoryRepo.crearTrabajo', () => {
   it('crea trabajo y líneas con las unidades en la primera etapa (menor orden), no en la primera de la lista', async () => {
     const { repo, trabajos, lineas } = crear()
@@ -101,8 +143,15 @@ describe('supabaseRepo.crearTrabajo', () => {
       p_datos: {
         cliente_id: 'c1', area: 'afilado', entrada: 'cliente', salida: undefined, urgente: true, guia_retiro: ' G-1 ', notas: undefined,
         lineas: [{ producto: ' Cuchillo ', cantidad: 12, nota: undefined }, { producto: 'Tijera', cantidad: 3, nota: undefined }],
+        clave: undefined,
       },
     })
+  })
+
+  it('manda la clave de idempotencia dentro de p_datos', async () => {
+    const { repo, llamadas } = falso({ data: fila, error: null })
+    await repo.crearTrabajo(datos, '11111111-1111-4111-8111-111111111111')
+    expect((llamadas[0].args as { p_datos: { clave: string } }).p_datos.clave).toBe('11111111-1111-4111-8111-111111111111')
   })
 
   it('no llama a la base si los datos no son válidos', async () => {

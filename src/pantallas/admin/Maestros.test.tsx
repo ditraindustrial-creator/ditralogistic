@@ -40,6 +40,24 @@ describe('Maestros: clientes', () => {
     expect((await repo.listarClientes()).map((c) => c.rut).sort()).toEqual(['12345678-5', '76123456-7'])
   })
 
+  it('después de leer el archivo vacía el selector: volver a elegir el mismo archivo (corregido) se vuelve a leer', async () => {
+    const repo = crearMemoryRepo()
+    render(<Maestros repo={repo} />)
+    const input = (await screen.findByLabelText('Archivo de clientes (CSV)')) as HTMLInputElement
+    await userEvent.upload(input, archivo('Nombre;RUT\nUno;abc\n'))
+    expect(input.value).toBe('')
+    await userEvent.selectOptions(await screen.findByLabelText('Columna del nombre'), 'Nombre')
+    await userEvent.selectOptions(screen.getByLabelText('Columna del RUT'), 'RUT')
+    await userEvent.click(screen.getByRole('button', { name: 'Importar clientes' }))
+    expect(await screen.findByText(/El RUT "abc" no es válido/)).toBeInTheDocument()
+    // Se corrige el archivo en Excel y se elige de nuevo con el mismo nombre.
+    await userEvent.upload(input, archivo('Nombre;RUT\nUno;1-9\n'))
+    await userEvent.selectOptions(await screen.findByLabelText('Columna del nombre'), 'Nombre')
+    await userEvent.selectOptions(screen.getByLabelText('Columna del RUT'), 'RUT')
+    await userEvent.click(screen.getByRole('button', { name: 'Importar clientes' }))
+    expect(await screen.findByText('1 cliente nuevo, 0 actualizados, 0 sin cambios.')).toBeInTheDocument()
+  })
+
   it('un archivo guardado por Excel en Windows-1252 conserva la ñ y las tildes', async () => {
     const texto = 'Nombre;RUT\r\nPeña y Cía;12.345.678-5\r\n'
     const latin1 = Uint8Array.from(texto, (c) => c.charCodeAt(0))

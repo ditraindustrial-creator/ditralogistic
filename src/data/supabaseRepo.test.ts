@@ -29,6 +29,13 @@ describe('errorDeMovimiento', () => {
     const e = errorDeMovimiento({ code: '42501', message: 'new row violates row-level security policy for table "movimientos"' })
     expect(e.message).toBe('No tienes permiso para mover unidades de esta línea.')
   })
+  it('"permission denied for table" (faltan permisos de tabla) también se traduce; los avisos propios pasan tal cual', () => {
+    expect(errorDeMovimiento({ code: '42501', message: 'permission denied for table movimientos' }).message).toBe(
+      'No tienes permiso para mover unidades de esta línea.',
+    )
+    const corr = 'Solo secretaría, jefe de taller o administración pueden sacar unidades de una etapa de entrega.'
+    expect(errorDeMovimiento({ code: '42501', message: corr }).message).toBe(corr)
+  })
   it('una cantidad no entera se informa en español', () => {
     expect(errorDeMovimiento({ code: '22P02', message: 'invalid input syntax for type integer: "1.5"' }).message).toBe(
       'La cantidad debe ser un número entero mayor que cero.',

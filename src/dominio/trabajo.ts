@@ -23,6 +23,9 @@ export interface DatosTrabajoNuevo {
   lineas: LineaNueva[]
 }
 
+/** Mensaje cuando la clave de una recepción ya se usó en otra sesión. Igual que en la base (0008). */
+export const RECEPCION_CLAVE_USADA = 'Esta recepción no se pudo guardar. Cierra el formulario, ábrelo de nuevo e inténtalo otra vez.'
+
 /** Error de regla de negocio al crear un trabajo; el mensaje está en español y se muestra tal cual. */
 export class ErrorTrabajo extends Error {
   constructor(mensaje: string) {

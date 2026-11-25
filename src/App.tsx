@@ -123,9 +123,11 @@ export default function App({ repo }: { repo: Repo }) {
           )}
         </section>
       ) : (
-        <nav aria-label="Menú" className="flex flex-col gap-3">
+        // Menú compacto (botones en filas que se ajustan, de al menos 48 px de alto): en el celular "Qué hay
+        // listo" queda a la vista sin bajar, incluso con los seis botones de gestión.
+        <nav aria-label="Menú" className="flex flex-wrap gap-2">
           {permitidas.filter((p) => p.id !== 'listo').map((p) => (
-            <button key={p.id} onClick={() => setPantalla(p.id)} className="rounded bg-teal-700 p-5 text-left text-xl font-semibold text-white">
+            <button key={p.id} onClick={() => setPantalla(p.id)} className="min-h-12 flex-auto rounded bg-teal-700 px-4 py-2 text-left text-lg font-semibold text-white">
               {p.titulo}
             </button>
           ))}

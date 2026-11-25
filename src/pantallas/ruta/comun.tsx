@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { Repo } from '../../data/repo'
 import { unidadesListasPorLinea } from '../../dominio/entrega'
 import type { DatosOperacion } from '../../dominio/listo'
-import { ErrorVisita, type Parada } from '../../dominio/ruta'
+import { ErrorVisita, type Confirmacion, type Parada } from '../../dominio/ruta'
 import type { Modalidad, Recorrido, Visita } from '../../dominio/tipos'
 
 export const NOMBRES_SALIDA: Record<Modalidad, string> = {
@@ -75,3 +75,68 @@ export function agruparParadas(paradas: Parada[], recorridos: Recorrido[]): Grup
 }
 
 export const ESTADO_VISITA = { si: 'Confirmada', no: 'No confirmada', sin_respuesta: 'Sin respuesta' } as const
+
+const OPCIONES_VISITA: { id: Confirmacion; titulo: string }[] = [
+  { id: 'si', titulo: 'Sí' },
+  { id: 'no', titulo: 'No' },
+  { id: 'sin_respuesta', titulo: 'Sin respuesta' },
+]
+
+/** Sí / No / Sin respuesta de la visita de una parada (botones grandes; un radio nativo por opción). */
+export function ControlVisita({ parada, ocupado, alMarcar }: { parada: Parada; ocupado: boolean; alMarcar: (c: Confirmacion) => void }) {
+  return (
+    <div role="radiogroup" aria-label={`Visita ${parada.clienteNombre}`} className="grid grid-cols-3 gap-2 print:hidden">
+      {OPCIONES_VISITA.map((c) => (
+        <label
+          key={c.id}
+          className={`flex min-h-14 cursor-pointer items-center justify-center rounded border-2 px-2 text-center text-lg focus-within:ring-4 focus-within:ring-teal-300 ${
+            parada.confirmada === c.id ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-300 bg-white'
+          }`}
+        >
+          <input
+            type="radio"
+            className="sr-only"
+            name={`visita-${parada.clienteId}`}
+            checked={parada.confirmada === c.id}
+            disabled={ocupado}
+            onChange={() => alMarcar(c.id)}
+          />
+          {c.titulo}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Sección que se puede plegar (cerrada por defecto) pero que al imprimir siempre sale completa:
+ * el contenido se queda en la página, oculto en pantalla con `hidden` y visible en papel.
+ */
+export function Plegable({ titulo, detalle, children }: { titulo: string; detalle?: string; children: ReactNode }) {
+  const [abierta, setAbierta] = useState(false)
+  const id = useId()
+  return (
+    <section aria-labelledby={`${id}-t`} className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id={`${id}-t`} className="text-xl font-bold">{titulo}</h2>
+        <button
+          type="button"
+          aria-expanded={abierta}
+          aria-controls={`${id}-c`}
+          className="min-h-12 rounded border-2 border-slate-300 bg-white px-4 text-lg font-semibold print:hidden"
+          onClick={() => setAbierta((a) => !a)}
+        >
+          {abierta ? 'Ocultar' : 'Mostrar'}
+        </button>
+      </div>
+      {detalle && <p className="text-slate-700">{detalle}</p>}
+      <div
+        id={`${id}-c`}
+        aria-hidden={!abierta}
+        className={`${abierta ? 'flex' : 'hidden'} flex-col gap-3 print:flex`}
+      >
+        {children}
+      </div>
+    </section>
+  )
+}

@@ -1,17 +1,20 @@
 import type { Repo } from './repo'
 import type { Cliente, Etapa, Linea, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
-import { ErrorTrabajo, MODALIDADES, primeraEtapa, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
-import { ErrorEntrega, planificarEntrega } from '../dominio/entrega'
+import { ErrorTrabajo, MODALIDADES, primeraEtapa, RECEPCION_CLAVE_USADA, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
+import { ENTREGA_CLAVE_USADA, ErrorEntrega, planificarEntrega, validarEntradaEntrega, validarTransporte } from '../dominio/entrega'
 import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
 import { diaLocal } from '../dominio/fechas'
-import { planificarClientes, planificarProductos } from '../dominio/maestros'
+import { ErrorCliente, planificarClientes, planificarProductos, RUT_DUPLICADO, validarClienteNuevo } from '../dominio/maestros'
 import {
   ErrorMovimiento,
   distribucionPorEtapa,
   validarCantidad,
+  validarEtapasFinales,
   validarEtapasMovimiento,
   validarMovimiento,
 } from '../dominio/avance'
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export interface MemoryRepoOpciones {
   /** Usuario con sesión ya iniciada. */
@@ -50,6 +53,9 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
   const productos: Producto[] = (opciones.productos ?? []).map((p) => ({ ...p }))
   const visitas: Visita[] = (opciones.visitas ?? []).map((v) => ({ ...v }))
   let siguienteId = 1
+  // Claves de idempotencia ya usadas, como trabajos.clave_idempotencia y entregas_registradas (0008).
+  const clavesTrabajo = new Map<string, { usuarioId: string; trabajoId: string }>()
+  const clavesEntrega = new Map<string, { usuarioId: string; documento: string; entregas: string }>()
   const oyentes = new Set<() => void>()
   const oyentesEstado = new Set<(conectado: boolean) => void>()
   const avisar = () => oyentes.forEach((f) => f())
@@ -104,6 +110,8 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       const origen = etapas.find((e) => e.id === origenId)
       const destino = etapas.find((e) => e.id === destinoId)
       validarEtapasMovimiento(origen, destino, trabajo.area)
+      // Como movimientos_validar (0008): a la etapa final solo se llega entregando; desde ella solo corrige gestión.
+      validarEtapasFinales(origen, destino, esGestion(actual))
       // Como la política movimientos_crear (0007): el chofer solo entrega (de "listo" a la etapa final).
       if (actual.rol === 'chofer' && !(origen?.esListo && destino?.esFinal)) {
         throw new ErrorMovimiento('No tienes permiso para mover unidades de esta línea.')
@@ -124,16 +132,24 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
     },
     // Mismas reglas que crear_trabajo en la base: validación completa antes de escribir, recepción
     // solo a la primera etapa del área y todo o nada. Es síncrono entre validar y escribir.
-    async crearTrabajo(datos: DatosTrabajoNuevo) {
+    async crearTrabajo(datos: DatosTrabajoNuevo, clave?: string) {
       if (!actual) throw new ErrorTrabajo('Debes iniciar sesión para recibir trabajos.')
       if (!['admin', 'secretaria', 'jefe_taller', 'chofer'].includes(actual.rol)) {
         throw new ErrorTrabajo('No tienes permiso para recibir trabajos.')
       }
+      if (clave !== undefined && !UUID.test(clave)) throw new ErrorTrabajo('La clave de la solicitud no es válida.')
       const errores = validarTrabajoNuevo(datos)
       if (errores.length > 0) throw new ErrorTrabajo(errores[0])
       if (!clientes.some((c) => c.id === datos.clienteId)) throw new ErrorTrabajo('El cliente no existe.')
       const primera = primeraEtapa(etapas, datos.area)
       if (!primera) throw new ErrorTrabajo('El área no tiene etapas configuradas.')
+      const previa = clave !== undefined ? clavesTrabajo.get(clave.toLowerCase()) : undefined
+      if (previa) {
+        // Reintento con la misma clave: el mismo usuario recibe lo ya creado; otro usuario, un error sin datos.
+        const t = trabajos.find((x) => x.id === previa.trabajoId)
+        if (previa.usuarioId !== actual.id || !t) throw new ErrorTrabajo(RECEPCION_CLAVE_USADA)
+        return { ...t }
+      }
       const texto = (s?: string) => s?.trim() || undefined
       const trabajo: Trabajo = {
         id: `trab-${siguienteId++}`,
@@ -158,6 +174,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       const creadoEn = trabajo.recibidoEn
       trabajos.push(trabajo)
       lineas.push(...nuevasLineas)
+      if (clave !== undefined) clavesTrabajo.set(clave.toLowerCase(), { usuarioId: actual.id, trabajoId: trabajo.id })
       for (const l of nuevasLineas) {
         movimientos.push({
           id: `mov-${siguienteId++}`, lineaId: l.id, cantidad: l.cantidad,
@@ -205,8 +222,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       validarVisita({ fecha, clienteId, nota: texto })
       guardarVisita(fecha, clienteId, (v) => {
         v.solicitada = true
-        if (texto) v.nota = texto
-        else delete v.nota
+        if (texto) v.nota = texto // sin nota, se conserva la que ya tenía
       })
     },
     async actualizarSalida(trabajoId, salida) {
@@ -220,9 +236,19 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
     },
     // Mismas reglas que entregar_unidades: plan completo (todo o nada) y luego se aplica. Es síncrono
     // entre planificar y escribir, así que dos entregas simultáneas se serializan como con el bloqueo.
-    async entregarUnidades(entregas, documento) {
+    async entregarUnidades(entregas, documento, opciones = {}) {
       if (!actual) throw new ErrorEntrega('Debes iniciar sesión para registrar entregas.')
       if (!esDeRuta(actual)) throw new ErrorEntrega('No tienes permiso para registrar entregas.')
+      const doc = validarEntradaEntrega(entregas, documento)
+      const transporte = validarTransporte(opciones.transporte)
+      const clave = opciones.clave?.toLowerCase()
+      const huella = JSON.stringify([...entregas].map((e) => [e.lineaId.toLowerCase(), e.cantidad]).sort())
+      const previa = clave !== undefined ? clavesEntrega.get(clave) : undefined
+      if (previa) {
+        // Reintento de la misma entrega por el mismo usuario: ya quedó registrada, no se hace nada.
+        if (previa.usuarioId === actual.id && previa.documento === doc && previa.entregas === huella) return
+        throw new ErrorEntrega(ENTREGA_CLAVE_USADA)
+      }
       const plan = planificarEntrega({ trabajos, lineas, movimientos, etapas }, entregas, documento)
       const creadoEn = new Date().toISOString()
       for (const m of plan.movimientos) {
@@ -230,12 +256,27 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       }
       for (const g of plan.guias) {
         const i = trabajos.findIndex((t) => t.id === g.trabajoId)
-        trabajos[i] = { ...trabajos[i], guiaDespacho: g.guiaDespacho }
+        trabajos[i] = { ...trabajos[i], guiaDespacho: g.guiaDespacho, ...(transporte ? { transporte } : {}) }
       }
+      if (clave !== undefined) clavesEntrega.set(clave, { usuarioId: actual.id, documento: doc, entregas: huella })
       avisar()
     },
     async listarClientes() {
       return clientes.map((c) => ({ ...c }))
+    },
+    // Como RLS (clientes_gestion y clientes_chofer_crea) y el índice único de RUT (0004).
+    async crearCliente(datos) {
+      if (!actual) throw new ErrorCliente('Debes iniciar sesión para crear clientes.')
+      if (!esDeRuta(actual)) throw new ErrorCliente('No tienes permiso para crear clientes.')
+      const { cliente, errores } = validarClienteNuevo(datos)
+      if (errores.length > 0) throw new ErrorCliente(errores[0])
+      if (clientes.some((c) => c.rut === cliente.rut)) throw new ErrorCliente(RUT_DUPLICADO)
+      if (cliente.recorridoId !== null && !recorridos.some((r) => r.id === cliente.recorridoId)) {
+        throw new ErrorCliente('El recorrido no existe.')
+      }
+      const nuevo: Cliente = { ...cliente, id: `cli-${siguienteId++}` }
+      clientes.push(nuevo)
+      return { ...nuevo }
     },
     async guardarClientes(entrantes) {
       exigirGestion()

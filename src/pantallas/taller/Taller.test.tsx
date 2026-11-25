@@ -195,7 +195,7 @@ describe('Taller', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Entregar' }))
       expect(await screen.findByRole('status')).toHaveTextContent('Entrega registrada: 4 unidades · Documento 4521')
       expect(entregar).toHaveBeenCalledTimes(1)
-      expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l5', cantidad: 4 }], '4521')
+      expect(entregar).toHaveBeenCalledWith([{ lineaId: 'l5', cantidad: 4 }], '4521', { clave: expect.any(String) })
       expect(mover).not.toHaveBeenCalled()
       await waitFor(async () => expect(await tarjeta('Libros del Norte', 'Hacha')).toHaveTextContent('Listo 1'))
     })
@@ -222,6 +222,38 @@ describe('Taller', () => {
       expect(mover).toHaveBeenCalledWith('l1', 6, 'a2', 'a3')
       expect(entregar).not.toHaveBeenCalled()
       await screen.findByRole('status')
+    })
+  })
+
+  describe('corrección de una entrega ("Desde: Entregado")', () => {
+    // Disco: 2 en Listo y 2 ya en Entregado.
+    function montarConEntregadas(rol: Rol, espia = vi.fn()) {
+      const usuario = { id: 'u', nombre: 'Ana', rol }
+      const base = crearMemoryRepo({
+        usuario, etapas, clientes: [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9', recorridoId: null }],
+        trabajos: [trab('t6', 16, 'c1', 'afilado')],
+        lineas: [{ id: 'l6', trabajoId: 't6', producto: 'Disco', cantidad: 4 }],
+        movimientos: [mov('m1', 'l6', 4, null, 'a1'), mov('m2', 'l6', 4, 'a1', 'a4'), mov('m3', 'l6', 2, 'a4', 'a5')],
+      })
+      render(<Taller repo={espiar(espia)(base)} usuario={usuario} />)
+      return espia
+    }
+    it('a un operario no se le ofrece sacar unidades de Entregado', async () => {
+      montarConEntregadas('operario_afilado')
+      const fila = await abrir('Imprenta Sur', 'Disco')
+      expect(within(fila).getByText('Entregado 2')).toBeInTheDocument() // se ve, pero no es origen
+      expect(within(fila).queryByText('Desde')).not.toBeInTheDocument()
+      expect(within(fila).queryByLabelText('Entregado (2)')).not.toBeInTheDocument()
+      expect(within(fila).getByText('Disponibles en esta etapa: 2')).toBeInTheDocument() // origen: Listo
+    })
+    it('gestión sí puede devolver unidades de Entregado a Listo (corrección)', async () => {
+      const espia = montarConEntregadas('secretaria')
+      const fila = await abrir('Imprenta Sur', 'Disco')
+      await userEvent.click(within(fila).getByLabelText('Entregado (2)'))
+      expect(within(fila).getByLabelText('Listo')).toBeChecked()
+      await userEvent.click(within(fila).getByRole('button', { name: 'Mover' }))
+      expect(espia).toHaveBeenCalledWith('l6', 2, 'a5', 'a4')
+      expect(await screen.findByRole('status')).toHaveTextContent('2 unidades pasaron a Listo')
     })
   })
 
@@ -306,8 +338,9 @@ describe('Taller', () => {
     it('si la línea desaparece, cierra el panel', async () => {
       const repo = montar('jefe_taller')
       await abrir('Imprenta Sur', 'Sierra')
-      await repo.moverUnidades('l4', 2, 'a2', 'a5')
-      await repo.moverUnidades('l4', 4, 'a3', 'a5')
+      await repo.moverUnidades('l4', 2, 'a2', 'a4')
+      await repo.moverUnidades('l4', 4, 'a3', 'a4')
+      await repo.entregarUnidades([{ lineaId: 'l4', cantidad: 6 }], 'G-1')
       await waitFor(() => expect(screen.queryByText(/^Sierra · 6$/)).not.toBeInTheDocument())
       expect(screen.queryByLabelText('Cantidad')).not.toBeInTheDocument()
     })

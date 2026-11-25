@@ -113,6 +113,11 @@ export function normalizarRut(s: string): string {
 
 const RUT_VALIDO = /^\d{1,9}-[\dK]$/
 
+/** true si el RUT (ya normalizado con normalizarRut) tiene la forma 12345678-5 o 12345678-K. */
+export function rutValido(rutNormalizado: string): boolean {
+  return RUT_VALIDO.test(rutNormalizado)
+}
+
 function esFilaVacia(f: Record<string, string>): boolean {
   return Object.values(f).every((v) => v.trim() === '')
 }

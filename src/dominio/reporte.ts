@@ -17,7 +17,10 @@ export interface FilaReporte {
 }
 
 export interface ReporteDiario {
-  /** Unidades que llegaron a una etapa "listo" durante la fecha. */
+  /**
+   * Unidades que llegaron a una etapa "listo" durante la fecha (neto: se descuentan las devueltas ese
+   * día desde "listo" a una etapa no final; nunca más que la cantidad de la línea).
+   */
   listo: FilaReporte[]
   /** Unidades en etapas intermedias al cierre de la fecha. */
   enProduccion: FilaReporte[]
@@ -103,9 +106,13 @@ export function reporteDiario(fecha: string, datos: DatosOperacion): ReporteDiar
       unidades.set(destino.id, (unidades.get(destino.id) ?? 0) + m.cantidad)
       if (origen) unidades.set(origen.id, (unidades.get(origen.id) ?? 0) - m.cantidad)
       ultimoEn.set(destino.id, m.creadoEn)
-      if (destino.esListo && !origen?.esListo && diaLocal(m.creadoEn) === fecha) {
-        listoHoy += m.cantidad
-        listoHoyDesde = m.creadoEn
+      if (diaLocal(m.creadoEn) === fecha) {
+        if (destino.esListo && !origen?.esListo) {
+          listoHoy += m.cantidad
+          listoHoyDesde = m.creadoEn
+        }
+        // Devuelto el mismo día desde "listo" a una etapa no final (corrección): no cuenta dos veces.
+        if (origen?.esListo && !destino.esListo && !destino.esFinal) listoHoy -= m.cantidad
       }
     }
     if (desconocida) {
@@ -124,6 +131,8 @@ export function reporteDiario(fecha: string, datos: DatosOperacion): ReporteDiar
       urgente: trabajo.urgente,
     })
 
+    // Neto del día, y nunca más que la cantidad de la línea (p. ej. listo → entregado → corrección → listo).
+    listoHoy = Math.min(listoHoy, linea.cantidad)
     if (listoHoy > 0 && listoHoyDesde) r.listo.push(fila(listoHoy, listoHoyDesde))
     for (const [etapaId, cantidad] of unidades) {
       const etapa = etapaPorId.get(etapaId)!

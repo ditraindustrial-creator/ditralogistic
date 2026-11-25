@@ -64,3 +64,27 @@ describe('memoryRepo: maestros', () => {
     await expect(r.guardarRecorrido({ nombre: 'x', dia: 1, camioneta: 'A', lejano: false })).rejects.toThrow('No tienes permiso')
   })
 })
+
+describe('memoryRepo.crearCliente', () => {
+  const base = { recorridos: [{ id: 'r1', nombre: 'Norte', dia: 2 as const, camioneta: 'A', lejano: false }], clientes: [{ id: 'c1', nombre: 'Uno', rut: '1-9', recorridoId: null }] }
+  it('gestión y chofer crean un cliente con el RUT normalizado y el recorrido elegido', async () => {
+    for (const rol of ['secretaria', 'jefe_taller', 'admin', 'chofer'] as const) {
+      const r = crearMemoryRepo({ ...base, usuario: { id: 'u', nombre: 'U', rol } })
+      const c = await r.crearCliente({ nombre: ' Ferretería ', rut: '12.345.678-5', recorridoId: 'r1' })
+      expect(c).toMatchObject({ nombre: 'Ferretería', rut: '12345678-5', recorridoId: 'r1' })
+      expect((await r.listarClientes()).map((x) => x.rut)).toEqual(['1-9', '12345678-5'])
+    }
+  })
+  it('RUT repetido, datos inválidos, recorrido inexistente y roles sin permiso dan un mensaje en español', async () => {
+    const r = crearMemoryRepo({ ...base, usuario: { id: 'u', nombre: 'U', rol: 'secretaria' } })
+    await expect(r.crearCliente({ nombre: 'Otro', rut: '1-9' })).rejects.toThrow(
+      'Ya existe un cliente con ese RUT. Búscalo por nombre o RUT en vez de crearlo de nuevo.',
+    )
+    await expect(r.crearCliente({ nombre: '', rut: '2-7' })).rejects.toThrow('Escribe el nombre del cliente.')
+    await expect(r.crearCliente({ nombre: 'X', rut: '2-7', recorridoId: 'zz' })).rejects.toThrow('El recorrido no existe.')
+    const op = crearMemoryRepo({ ...base, usuario: { id: 'o', nombre: 'O', rol: 'operario_afilado' } })
+    await expect(op.crearCliente({ nombre: 'X', rut: '2-7' })).rejects.toThrow('No tienes permiso para crear clientes.')
+    await expect(crearMemoryRepo(base).crearCliente({ nombre: 'X', rut: '2-7' })).rejects.toThrow('Debes iniciar sesión para crear clientes.')
+    expect(await r.listarClientes()).toHaveLength(1)
+  })
+})

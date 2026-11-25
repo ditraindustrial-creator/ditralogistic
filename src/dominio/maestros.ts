@@ -1,4 +1,4 @@
-import { normalizarRut, type ClienteImportado, type ProductoImportado } from './csv'
+import { normalizarRut, rutValido, type ClienteImportado, type ProductoImportado } from './csv'
 import type { Cliente, Producto } from './tipos'
 
 export interface Plan<T> {
@@ -43,4 +43,57 @@ export function planificarProductos(existentes: Producto[], entrantes: ProductoI
     else plan.sinCambios++
   }
   return plan
+}
+
+// ---- Cliente nuevo (Recepción) ----
+
+/** Datos del formulario "Cliente nuevo". */
+export interface ClienteNuevo {
+  nombre: string
+  rut: string
+  contacto?: string
+  direccion?: string
+  recorridoId?: string | null
+}
+
+/** Error de regla de negocio al crear un cliente; el mensaje está en español y se muestra tal cual. */
+export class ErrorCliente extends Error {
+  constructor(mensaje: string) {
+    super(mensaje)
+    this.name = 'ErrorCliente'
+  }
+}
+
+export const TEXTO_CLIENTE_MAXIMO = 200
+export const RUT_DUPLICADO = 'Ya existe un cliente con ese RUT. Búscalo por nombre o RUT en vez de crearlo de nuevo.'
+
+/**
+ * Valida un cliente nuevo con las mismas reglas de RUT que el importador (normalizarRut + forma
+ * 12345678-5). Devuelve el cliente listo para guardar (RUT normalizado, textos sin espacios
+ * sobrantes, vacíos omitidos) y la lista de errores en español (vacía si se puede guardar).
+ * Con `existentes` avisa del RUT repetido antes de ir a la base.
+ */
+export function validarClienteNuevo(
+  datos: ClienteNuevo,
+  existentes: Cliente[] = [],
+): { cliente: Omit<Cliente, 'id'>; errores: string[] } {
+  const errores: string[] = []
+  const nombre = datos.nombre.trim()
+  const rutCrudo = datos.rut.trim()
+  const rut = normalizarRut(rutCrudo)
+  if (nombre === '') errores.push('Escribe el nombre del cliente.')
+  else if ([...nombre].length > TEXTO_CLIENTE_MAXIMO) errores.push(`El nombre puede tener hasta ${TEXTO_CLIENTE_MAXIMO} caracteres.`)
+  if (rutCrudo === '') errores.push('Escribe el RUT.')
+  else if (!rutValido(rut)) errores.push(`El RUT "${rutCrudo}" no es válido. Escríbelo así: 12.345.678-5.`)
+  else if (existentes.some((c) => normalizarRut(c.rut) === rut)) errores.push(RUT_DUPLICADO)
+  const cliente: Omit<Cliente, 'id'> = { nombre, rut, recorridoId: datos.recorridoId || null }
+  for (const campo of ['contacto', 'direccion'] as const) {
+    const v = datos[campo]?.trim()
+    if (!v) continue
+    if ([...v].length > TEXTO_CLIENTE_MAXIMO) {
+      errores.push(`${campo === 'contacto' ? 'El contacto' : 'La dirección'} puede tener hasta ${TEXTO_CLIENTE_MAXIMO} caracteres.`)
+    }
+    cliente[campo] = v
+  }
+  return { cliente, errores }
 }

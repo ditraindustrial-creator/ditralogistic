@@ -73,8 +73,19 @@ describe('supabaseRepo.entregarUnidades', () => {
     await repo.entregarUnidades([{ lineaId: 'l1', cantidad: 3 }, { lineaId: 'l2', cantidad: 1 }], ' 4521 ')
     expect(log).toEqual([{
       tipo: 'rpc',
-      args: ['entregar_unidades', { p_entregas: [{ linea_id: 'l1', cantidad: 3 }, { linea_id: 'l2', cantidad: 1 }], p_documento: '4521' }],
+      args: ['entregar_unidades', {
+        p_entregas: [{ linea_id: 'l1', cantidad: 3 }, { linea_id: 'l2', cantidad: 1 }], p_documento: '4521', p_clave: null, p_transporte: null,
+      }],
     }])
+  })
+  it('manda la clave de idempotencia y el transporte (recortado) cuando vienen', async () => {
+    const { repo, log } = crearFalso()
+    await repo.entregarUnidades([{ lineaId: 'l1', cantidad: 3 }], '4521', { clave: '11111111-1111-4111-8111-111111111111', transporte: ' Starken 9 ' })
+    expect(log[0].args[1]).toMatchObject({ p_clave: '11111111-1111-4111-8111-111111111111', p_transporte: 'Starken 9' })
+    await expect(repo.entregarUnidades([{ lineaId: 'l1', cantidad: 3 }], '4521', { transporte: 'x'.repeat(121) })).rejects.toThrow(
+      'El transporte puede tener hasta 120 caracteres.',
+    )
+    expect(log).toHaveLength(1)
   })
   it('valida antes de llamar a la base', async () => {
     const { repo, log } = crearFalso()
@@ -144,13 +155,15 @@ describe('supabaseRepo: visitas', () => {
     }])
   })
 
-  it('agregarVisitaExtra marca solicitada y guarda la nota recortada (o null)', async () => {
+  it('agregarVisitaExtra marca solicitada y guarda la nota recortada; sin nota no manda la columna (no borra la previa)', async () => {
     const { repo, log } = crearFalso()
     await repo.agregarVisitaExtra('2026-11-24', 'c1', '  Llamó ')
     await repo.agregarVisitaExtra('2026-11-25', 'c1')
+    await repo.agregarVisitaExtra('2026-11-25', 'c1', '   ')
     expect(log.map((l) => l.args[1])).toEqual([
       { fecha: '2026-11-24', cliente_id: 'c1', solicitada: true, nota: 'Llamó' },
-      { fecha: '2026-11-25', cliente_id: 'c1', solicitada: true, nota: null },
+      { fecha: '2026-11-25', cliente_id: 'c1', solicitada: true },
+      { fecha: '2026-11-25', cliente_id: 'c1', solicitada: true },
     ])
   })
 

@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
-import { ErrorEntrega, validarEntradaEntrega, type Entrega as EntregaDatos, type LineaEntregable } from '../../dominio/entrega'
+import { nuevaClave } from '../../dominio/clave'
+import {
+  ErrorEntrega,
+  TRANSPORTE_MAXIMO,
+  validarEntradaEntrega,
+  validarTransporte,
+  type Entrega as EntregaDatos,
+  type LineaEntregable,
+  type OpcionesEntrega,
+} from '../../dominio/entrega'
 
 const ERROR_GENERICO = 'No se pudo registrar la entrega. Revisa tu conexión e inténtalo de nuevo.'
 
@@ -11,6 +20,7 @@ const botonClaro = 'min-h-14 min-w-14 rounded border-2 border-slate-300 bg-white
 export interface ResultadoEntrega {
   entregas: EntregaDatos[]
   documento: string
+  transporte?: string
   unidades: number
   trabajos: { trabajoId: string; numero: number }[]
 }
@@ -21,10 +31,12 @@ const aNumero = (s: string) => (s.trim() === '' ? NaN : Number(s))
 /**
  * Flujo de entrega, compartido por la ruta, la hoja del chofer y el taller: se eligen líneas y
  * cantidades (nunca más de lo listo), se anota el N° de documento (guía o factura) y se llama una
- * vez a `entregarUnidades`.
+ * vez a `entregarUnidades`. Cada panel abierto tiene su clave de idempotencia: si se pierde la
+ * respuesta y se reintenta, la base no entrega dos veces. Con `conTransporte` (encomienda) pide además
+ * la empresa y el N° de guía de transporte (opcional).
  */
 export default function Entrega({
-  repo, lineas, titulo, alTerminar, alCerrar, cantidadesIniciales,
+  repo, lineas, titulo, alTerminar, alCerrar, cantidadesIniciales, conTransporte = false,
 }: {
   repo: Repo
   lineas: LineaEntregable[]
@@ -34,13 +46,18 @@ export default function Entrega({
   alCerrar: () => void
   /** Cantidad inicial por línea (por defecto, todo lo listo). */
   cantidadesIniciales?: Record<string, number>
+  /** Pide el transporte (empresa y N° de guía de transporte) para una encomienda. */
+  conTransporte?: boolean
 }) {
   const enCurso = useRef(false)
+  // Una clave por panel: se conserva tras un error (el reintento la reusa) y el panel se cierra al terminar.
+  const [clave] = useState(nuevaClave)
   const formulario = useRef<HTMLFormElement>(null)
   const campoDocumento = useRef<HTMLInputElement>(null)
   const [editadas, setEditadas] = useState<Record<string, string>>({})
   const [desmarcadas, setDesmarcadas] = useState<ReadonlySet<string>>(new Set())
   const [documento, setDocumento] = useState('')
+  const [transporte, setTransporte] = useState('')
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [hecho, setHecho] = useState<ResultadoEntrega | null>(null)
@@ -71,8 +88,10 @@ export default function Entrega({
     const elegidas = lineas.filter((l) => !desmarcadas.has(l.lineaId))
     const entregas = elegidas.map((l) => ({ lineaId: l.lineaId, cantidad: aNumero(cantidadTexto(l)) }))
     let doc: string
+    let transp: string | undefined
     try {
       doc = validarEntradaEntrega(entregas, documento)
+      transp = conTransporte ? validarTransporte(transporte) : undefined
     } catch (e) {
       setError(e instanceof ErrorEntrega ? e.message : ERROR_GENERICO)
       return
@@ -81,9 +100,12 @@ export default function Entrega({
     enCurso.current = true
     setEnviando(true)
     try {
-      await repo.entregarUnidades(entregas, doc)
+      const opciones: OpcionesEntrega = { clave }
+      if (transp) opciones.transporte = transp
+      await repo.entregarUnidades(entregas, doc, opciones)
       const trabajos = [...new Map(elegidas.map((l) => [l.trabajoId, { trabajoId: l.trabajoId, numero: l.numero }])).values()]
-      const resultado = { entregas, documento: doc, unidades: entregas.reduce((s, e) => s + e.cantidad, 0), trabajos }
+      const resultado: ResultadoEntrega = { entregas, documento: doc, unidades: entregas.reduce((s, e) => s + e.cantidad, 0), trabajos }
+      if (transp) resultado.transporte = transp
       setHecho(resultado)
       alTerminar?.(resultado)
     } catch (e) {
@@ -106,6 +128,7 @@ export default function Entrega({
       <div className="flex flex-col gap-4 rounded border-2 border-teal-700 p-4">
         <p role="status" className="text-xl font-bold text-teal-800">
           Entrega registrada: {unidades(hecho.unidades)} · Documento {hecho.documento}
+          {hecho.transporte ? ` · Transporte ${hecho.transporte}` : ''}
         </p>
         <button type="button" className={botonGrande} onClick={alCerrar}>Listo</button>
       </div>
@@ -179,6 +202,19 @@ export default function Entrega({
             autoComplete="off"
             value={documento}
             onChange={(e) => setDocumento(e.target.value)}
+          />
+        </label>
+      )}
+      {lineas.length > 0 && conTransporte && (
+        <label className="flex flex-col gap-1 text-lg font-semibold">
+          Transporte (empresa y N° de guía de transporte, opcional)
+          <input
+            className={`${campo} font-normal`}
+            autoComplete="off"
+            maxLength={TRANSPORTE_MAXIMO}
+            placeholder="Ej.: Starken 123456"
+            value={transporte}
+            onChange={(e) => setTransporte(e.target.value)}
           />
         </label>
       )}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { planificarClientes, planificarProductos } from './maestros'
+import { planificarClientes, planificarProductos, RUT_DUPLICADO, validarClienteNuevo } from './maestros'
 import type { Cliente, Producto } from './tipos'
 
 describe('planificarClientes', () => {
@@ -57,5 +57,40 @@ describe('planificarProductos', () => {
     ])
     expect(p.nuevos).toEqual([{ codigo: 'B-2', nombre: 'Libro', area: 'encuadernacion' }])
     expect(p.actualizaciones).toEqual([{ id: 'p1', cambios: { codigo: 'A-1', nombre: 'Cuchillo', area: 'afilado' } }])
+  })
+})
+
+describe('validarClienteNuevo', () => {
+  const existentes: Cliente[] = [{ id: 'c1', nombre: 'Imprenta Sur', rut: '76.123.456-7', recorridoId: null }]
+
+  it('normaliza el RUT y los textos, y omite los opcionales vacíos', () => {
+    const r = validarClienteNuevo({ nombre: '  Ferretería Norte ', rut: '12.345.678-5', contacto: ' ', direccion: ' Calle 1 ', recorridoId: '' })
+    expect(r.errores).toEqual([])
+    expect(r.cliente).toEqual({ nombre: 'Ferretería Norte', rut: '12345678-5', direccion: 'Calle 1', recorridoId: null })
+  })
+  it('acepta un recorrido y la K del dígito verificador en minúscula', () => {
+    const r = validarClienteNuevo({ nombre: 'Uno', rut: '9.999.999-k', recorridoId: 'r1' })
+    expect(r.errores).toEqual([])
+    expect(r.cliente).toEqual({ nombre: 'Uno', rut: '9999999-K', recorridoId: 'r1' })
+  })
+  it('exige nombre y RUT', () => {
+    expect(validarClienteNuevo({ nombre: ' ', rut: '' }).errores).toEqual(['Escribe el nombre del cliente.', 'Escribe el RUT.'])
+  })
+  it('rechaza un RUT mal escrito con las mismas reglas del importador', () => {
+    expect(validarClienteNuevo({ nombre: 'X', rut: 'abc' }).errores).toEqual([
+      'El RUT "abc" no es válido. Escríbelo así: 12.345.678-5.',
+    ])
+    expect(validarClienteNuevo({ nombre: 'X', rut: '1234567890-1' }).errores).toHaveLength(1)
+  })
+  it('avisa del RUT repetido aunque venga en otro formato', () => {
+    expect(validarClienteNuevo({ nombre: 'Otra', rut: '76123456-7' }, existentes).errores).toEqual([RUT_DUPLICADO])
+  })
+  it('limita el largo de los textos', () => {
+    const largo = 'x'.repeat(201)
+    expect(validarClienteNuevo({ nombre: largo, rut: '1-9', contacto: largo, direccion: largo }).errores).toEqual([
+      'El nombre puede tener hasta 200 caracteres.',
+      'El contacto puede tener hasta 200 caracteres.',
+      'La dirección puede tener hasta 200 caracteres.',
+    ])
   })
 })
