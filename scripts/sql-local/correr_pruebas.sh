@@ -29,3 +29,6 @@ DB="$DB" scripts/sql-local/carrera_mover_unidades.sh
 
 echo "== carrera de entregas con sesiones psql paralelas"
 DB="$DB" scripts/sql-local/carrera_entregar_unidades.sh
+
+echo "== carrera de reintentos con la misma clave de idempotencia"
+DB="$DB" scripts/sql-local/carrera_clave_idempotencia.sh

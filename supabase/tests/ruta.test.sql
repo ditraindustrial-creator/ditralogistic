@@ -319,21 +319,22 @@ select is(array[agregar_documento(null, '1'), agregar_documento(' ', '1'), agreg
 -- ===================== Límites del chofer sobre trabajos y líneas =====================
 select pg_temp.como(:'chofer') \g /dev/null
 select throws_ok($q$update trabajos set urgente = true where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  '42501', 'Solo puedes cambiar la salida y la guía de despacho de un trabajo.',
+  '42501', 'Solo puedes cambiar la salida, la guía de despacho y el transporte de un trabajo.',
   'el chofer no cambia la marca de urgente');
 select throws_ok($q$update trabajos set notas = 'x' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  '42501', 'Solo puedes cambiar la salida y la guía de despacho de un trabajo.',
+  '42501', 'Solo puedes cambiar la salida, la guía de despacho y el transporte de un trabajo.',
   'el chofer no cambia las notas');
 select throws_ok($q$update trabajos set cliente_id = 'c0000000-0000-0000-0000-000000000702' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  '42501', 'Solo puedes cambiar la salida y la guía de despacho de un trabajo.',
+  '42501', 'Solo puedes cambiar la salida, la guía de despacho y el transporte de un trabajo.',
   'el chofer no cambia el cliente');
 select throws_ok($q$update trabajos set creado_por = 'a0000000-0000-0000-0000-000000000702' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  '42501', 'Solo puedes cambiar la salida y la guía de despacho de un trabajo.',
+  '42501', 'Solo puedes cambiar la salida, la guía de despacho y el transporte de un trabajo.',
   'el chofer no se adueña de un trabajo');
-select lives_ok($q$update trabajos set salida = 'cliente', guia_despacho = 'G-9' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
-  'el chofer sí cambia salida y guía de despacho');
+-- (0008) La guía de despacho del chofer solo se completa: se agrega ", G-9" al final.
+select lives_ok($q$update trabajos set salida = 'cliente', guia_despacho = '4521, F-77, G-9' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
+  'el chofer sí cambia salida y completa la guía de despacho');
 select is((select row(salida, guia_despacho)::text from trabajos where id = 'd0000000-0000-0000-0000-000000000701'),
-  row('cliente'::modalidad, 'G-9')::text, 'los dos campos quedaron guardados');
+  row('cliente'::modalidad, '4521, F-77, G-9')::text, 'los dos campos quedaron guardados');
 select pg_temp.como(:'sec') \g /dev/null
 select lives_ok($q$update trabajos set urgente = true, notas = 'revisar', salida = 'ruta_propia' where id = 'd0000000-0000-0000-0000-000000000701'$q$,
   'la secretaria sigue editando cualquier campo');
@@ -383,8 +384,10 @@ select throws_ok(format($q$insert into lineas (trabajo_id, producto, cantidad) v
 
 select throws_ok(format('select mover_unidades(%L, 1, %L, %L)', 'b0000000-0000-0000-0000-000000000712', :'recibido', :'taller'),
   '42501', null, 'el chofer no mueve unidades dentro del taller');
-select lives_ok(format('select mover_unidades(%L, 1, %L, %L)', 'b0000000-0000-0000-0000-000000000717', :'listo', :'entregado'),
-  'el chofer sí mueve de una etapa "listo" a la final');
+-- (0008) Llevar unidades a la etapa final solo se hace con entregar_unidades (con documento).
+select throws_ok(format('select mover_unidades(%L, 1, %L, %L)', 'b0000000-0000-0000-0000-000000000717', :'listo', :'entregado'),
+  'P0001', 'Las entregas se registran con «Entregar», anotando el número de guía o factura.',
+  'el chofer tampoco mueve de una etapa "listo" a la final sin documento');
 select pg_temp.como(:'sec') \g /dev/null
 select lives_ok($q$insert into lineas (trabajo_id, producto, cantidad) values ('d0000000-0000-0000-0000-000000000701', 'Colada', 1)$q$,
   'la secretaria sigue agregando líneas a trabajos existentes');
