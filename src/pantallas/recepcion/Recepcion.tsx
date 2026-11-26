@@ -24,6 +24,7 @@ const MODALIDADES: { id: Modalidad; titulo: string }[] = [
 const ERROR_GENERICO = 'No se pudo guardar el trabajo. Revisa tu conexión e inténtalo de nuevo.'
 
 const campo = 'min-h-12 w-full rounded border p-3 text-lg'
+const campoLinea = 'min-h-12 min-w-0 rounded border p-3 text-lg'
 const botonGrande = 'min-h-14 rounded bg-teal-700 px-5 py-3 text-xl font-semibold text-white disabled:opacity-50'
 const botonClaro = 'min-h-12 rounded border px-4 py-3 text-lg'
 
@@ -283,7 +284,7 @@ export default function Recepcion({
                 aria-label={`Producto línea ${i + 1}`}
                 placeholder="Producto"
                 list="productos-sugeridos"
-                className={`${campo} flex-1`}
+                className={`${campoLinea} flex-1`}
                 value={l.producto}
                 onChange={(e) => actualizarLinea(l.clave, { producto: e.target.value })}
               />
@@ -291,7 +292,7 @@ export default function Recepcion({
                 aria-label={`Cantidad línea ${i + 1}`}
                 placeholder="Cant."
                 inputMode="numeric"
-                className={`${campo} w-24`}
+                className={`${campoLinea} w-24`}
                 value={l.cantidad}
                 onChange={(e) => actualizarLinea(l.clave, { cantidad: e.target.value })}
               />
