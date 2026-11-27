@@ -11,6 +11,7 @@ import {
   type DatosTrabajoNuevo,
 } from '../../dominio/trabajo'
 import ClienteNuevo from './ClienteNuevo'
+import { COLOR_AREA } from '../colorArea'
 
 const AREAS: { id: Area; titulo: string }[] = [
   { id: 'afilado', titulo: 'Afilado' },
@@ -41,13 +42,15 @@ const DETALLE_MAXIMO = 200
 
 /** Opciones tipo botón grande (un radio nativo por opción: se maneja bien con el dedo y con lector de pantalla). */
 function Opciones<T extends string>({
-  nombre, titulo, opciones, valor, alCambiar,
+  nombre, titulo, opciones, valor, alCambiar, colorElegido,
 }: {
   nombre: string
   titulo: string
   opciones: { id: T; titulo: string }[]
   valor: T
   alCambiar: (v: T) => void
+  /** Clases del botón elegido según la opción (por defecto, verde azulado). */
+  colorElegido?: (v: T) => string
 }) {
   return (
     <fieldset className="flex flex-col gap-2">
@@ -57,7 +60,7 @@ function Opciones<T extends string>({
           <label
             key={o.id}
             className={`flex min-h-12 flex-1 cursor-pointer items-center justify-center rounded border-2 px-3 py-2 text-center text-lg ${
-              valor === o.id ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-300 bg-white'
+              valor === o.id ? (colorElegido?.(o.id) ?? 'border-teal-700 bg-teal-700 text-white') : 'border-slate-300 bg-white'
             }`}
           >
             <input type="radio" name={nombre} className="sr-only" checked={valor === o.id} onChange={() => alCambiar(o.id)} />
@@ -273,7 +276,7 @@ export default function Recepcion({
           void guardar()
         }}
       >
-        <Opciones nombre="area" titulo="Área" opciones={AREAS} valor={area} alCambiar={setArea} />
+        <Opciones nombre="area" titulo="Área" opciones={AREAS} valor={area} alCambiar={setArea} colorElegido={(a) => COLOR_AREA[a].elegido} />
         <Opciones nombre="entrada" titulo="¿Cómo llegó?" opciones={MODALIDADES} valor={entrada} alCambiar={setEntrada} />
 
         <fieldset className="flex flex-col gap-3">
@@ -287,12 +290,12 @@ export default function Recepcion({
             ))}
           </datalist>
           {lineas.map((l, i) => (
-            <div key={l.clave} className="flex flex-wrap items-end gap-2">
+            <div key={l.clave} className={`flex flex-wrap items-end gap-2 rounded border-l-8 p-2 ${COLOR_AREA[area].borde} ${COLOR_AREA[area].fondo}`}>
               <input
                 aria-label={`Producto línea ${i + 1}`}
                 placeholder="Producto"
                 list="productos-sugeridos"
-                className={`${campoLinea} min-w-[12rem] flex-[2]`}
+                className={`${campoLinea} min-w-[12rem] flex-[2] bg-white`}
                 value={l.producto}
                 onChange={(e) => actualizarLinea(l.clave, { producto: e.target.value })}
               />
@@ -300,7 +303,7 @@ export default function Recepcion({
                 aria-label={`Cantidad línea ${i + 1}`}
                 placeholder="Cant."
                 inputMode="numeric"
-                className={`${campoLinea} w-24`}
+                className={`${campoLinea} w-20 shrink-0 bg-white text-center`}
                 value={l.cantidad}
                 onChange={(e) => actualizarLinea(l.clave, { cantidad: e.target.value })}
               />
@@ -308,7 +311,7 @@ export default function Recepcion({
                 aria-label={`Detalle línea ${i + 1}`}
                 placeholder="Detalle (ej. Ø14 blanco)"
                 maxLength={DETALLE_MAXIMO}
-                className={`${campoLinea} min-w-[10rem] flex-1`}
+                className={`${campoLinea} min-w-[12rem] flex-[3] bg-white`}
                 value={l.detalle}
                 onChange={(e) => actualizarLinea(l.clave, { detalle: e.target.value })}
               />
