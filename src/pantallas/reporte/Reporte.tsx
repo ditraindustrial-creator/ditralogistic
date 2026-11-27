@@ -38,7 +38,7 @@ function Seccion({ titulo, vacio, filas, fecha, conDia, planes, fase }: {
                   {f.urgente && <span className="ml-2 rounded bg-red-100 px-2 text-sm font-bold text-red-800">Urgente</span>}
                 </p>
                 <p className="text-slate-700">
-                  <span>Trabajo N.º {f.trabajoNumero}</span> · <span>{f.producto}{f.nota ? ` (${f.nota})` : ''}</span> · <span className="font-semibold">{unidades(f.cantidad)}</span>
+                  <span>Trabajo {f.trabajoCodigo}</span> · <span>{f.producto}{f.nota ? ` (${f.nota})` : ''}</span> · <span className="font-semibold">{unidades(f.cantidad)}</span>
                 </p>
                 {resumenPlan(planes.get(f.trabajoId), ahora) && (
                   <p className="font-semibold text-amber-800 print:text-black">Entrega planificada: {resumenPlan(planes.get(f.trabajoId), ahora)}</p>

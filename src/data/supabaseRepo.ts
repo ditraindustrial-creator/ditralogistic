@@ -59,6 +59,7 @@ export function errorDeMovimiento(e: { code?: string; message: string }): Error 
 interface FilaTrabajo {
   id: string
   numero: number
+  numero_area: number
   cliente_id: string
   area: string
   entrada: string
@@ -77,6 +78,7 @@ export function filaATrabajo(f: FilaTrabajo): Trabajo {
   const t: Trabajo = {
     id: f.id,
     numero: Number(f.numero),
+    numeroArea: Number(f.numero_area),
     clienteId: f.cliente_id,
     area: f.area as Area,
     entrada: f.entrada as Modalidad,
@@ -209,7 +211,7 @@ export function errorDePlanificacion(e: { code?: string; message: string }, gene
 }
 
 const COLUMNAS_TRABAJO =
-  'id, numero, cliente_id, area, entrada, salida, recibido_en, guia_retiro, guia_despacho, factura, transporte, urgente, notas, entrega_planificada'
+  'id, numero, numero_area, cliente_id, area, entrada, salida, recibido_en, guia_retiro, guia_despacho, factura, transporte, urgente, notas, entrega_planificada'
 
 export function filaALinea(f: FilaLinea): Linea {
   const l: Linea = { id: f.id, trabajoId: f.trabajo_id, producto: f.producto, cantidad: f.cantidad }

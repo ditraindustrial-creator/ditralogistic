@@ -13,7 +13,7 @@ const etapas: Etapa[] = [
   { id: 'a5', area: 'afilado', orden: 5, nombre: 'Entregado', esListo: false, esFinal: true },
 ]
 const trab = (id: string, numero: number, clienteId: string, salida: Modalidad): Trabajo => ({
-  id, numero, clienteId, area: 'afilado', entrada: 'cliente', salida, recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
+  id, numero, numeroArea: numero, clienteId, area: 'afilado', entrada: 'cliente', salida, recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
 })
 const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d: string): Movimiento => ({
   id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn: '2026-11-20T12:00:00Z',
@@ -142,7 +142,7 @@ describe('RutaManana', () => {
       montar()
       const norte = await seccion(/Norte · Camioneta A/)
       const fila = within(norte).getByText('Imprenta Sur').closest('li')!
-      expect(fila).toHaveTextContent('N.º 11')
+      expect(fila).toHaveTextContent('A-011')
       expect(fila).toHaveTextContent('Cuchillo 4')
       expect(fila).toHaveTextContent('Tijera 1')
       const valpo = await seccion(/Valparaíso · Camioneta B/)
@@ -266,15 +266,15 @@ describe('RutaManana', () => {
       const enco = await seccion('Por encomienda')
       expect(within(enco).getByText('Encomiendas SA')).toBeInTheDocument()
       // 3 trabajos con recorrido y camioneta (11, 12) + 3 filas sueltas (13, 14, 15) = todo lo listo del día; el 16 es del lunes.
-      const todos = screen.getAllByText(/N\.º 1\d/).map((e) => e.textContent)
-      for (const n of ['N.º 11', 'N.º 12', 'N.º 13', 'N.º 14', 'N.º 15']) expect(todos.some((t) => t?.includes(n))).toBe(true)
+      const todos = screen.getAllByText(/A-01\d/).map((e) => e.textContent)
+      for (const n of ['A-011', 'A-012', 'A-013', 'A-014', 'A-015']) expect(todos.some((t) => t?.includes(n))).toBe(true)
     })
 
     it('cambiar la salida de un retiro en mostrador a "Ruta propia" lo pasa a la parada de su recorrido', async () => {
       const salida = vi.fn()
       montar({ envolver: (r) => ({ ...r, actualizarSalida: (...a) => (salida(...a), r.actualizarSalida(...a)) }) })
       const mostrador = await seccion('Retiran en mostrador')
-      await userEvent.selectOptions(within(mostrador).getByLabelText('Salida del trabajo N.º 14'), 'ruta_propia')
+      await userEvent.selectOptions(within(mostrador).getByLabelText('Salida del trabajo A-014'), 'ruta_propia')
       expect(salida).toHaveBeenCalledWith('t4', 'ruta_propia')
       const norte = await seccion(/Norte · Camioneta A/)
       await waitFor(() => expect(within(norte).getByText('Mostrador Ltda')).toBeInTheDocument())
@@ -284,7 +284,7 @@ describe('RutaManana', () => {
     it('un fallo al cambiar la salida se muestra en español y la fila no se mueve', async () => {
       montar({ envolver: (r) => ({ ...r, actualizarSalida: () => Promise.reject(new Error('Failed to fetch')) }) })
       const enco = await seccion('Por encomienda')
-      await userEvent.selectOptions(within(enco).getByLabelText('Salida del trabajo N.º 15'), 'ruta_propia')
+      await userEvent.selectOptions(within(enco).getByLabelText('Salida del trabajo A-015'), 'ruta_propia')
       expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cambiar la salida. Revisa tu conexión e inténtalo de nuevo.')
       expect(within(await seccion('Por encomienda')).getByText('Encomiendas SA')).toBeInTheDocument()
     })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validarTrabajoNuevo, primeraEtapa, filtrarClientes, parsearCantidad, type DatosTrabajoNuevo } from './trabajo'
+import { validarTrabajoNuevo, primeraEtapa, filtrarClientes, parsearCantidad, codigoTrabajo, coincideCodigo, masRecientePrimero, type DatosTrabajoNuevo } from './trabajo'
 import type { Cliente, Etapa } from './tipos'
 
 const base: DatosTrabajoNuevo = {
@@ -90,5 +90,34 @@ describe('filtrarClientes', () => {
   it('varias palabras deben aparecer todas', () => {
     expect(filtrarClientes(lista, 'imprenta ltda').map((x) => x.id)).toEqual(['1'])
     expect(filtrarClientes(lista, 'imprenta peña')).toEqual([])
+  })
+})
+
+describe('codigoTrabajo', () => {
+  it('letra del área y número con tres cifras', () => {
+    expect(codigoTrabajo({ area: 'afilado', numeroArea: 1 })).toBe('A-001')
+    expect(codigoTrabajo({ area: 'encuadernacion', numeroArea: 42 })).toBe('E-042')
+    expect(codigoTrabajo({ area: 'afilado', numeroArea: 1234 })).toBe('A-1234')
+  })
+})
+
+describe('coincideCodigo', () => {
+  const a7 = { area: 'afilado' as const, numeroArea: 7 }
+  it('acepta el código con o sin ceros, o solo el número', () => {
+    for (const q of ['a007', 'a7', '7', '007']) expect(coincideCodigo(a7, q)).toBe(true)
+  })
+  it('no confunde áreas ni números', () => {
+    for (const q of ['e7', 'e007', '8', 'a70', '', 'x7']) expect(coincideCodigo(a7, q)).toBe(false)
+  })
+})
+
+describe('masRecientePrimero', () => {
+  it('ordena por fecha de recepción, lo más nuevo arriba', () => {
+    const t = [
+      { numero: 1, recibidoEn: '2026-11-20T12:00:00Z' },
+      { numero: 2, recibidoEn: '2026-11-25T12:00:00Z' },
+      { numero: 3, recibidoEn: '2026-11-25T12:00:00Z' },
+    ]
+    expect([...t].sort(masRecientePrimero).map((x) => x.numero)).toEqual([3, 2, 1])
   })
 })

@@ -193,7 +193,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
   if (lineaEntrega) {
     const listas = lineaEntrega.distribucion.filter((d) => d.etapa.esListo).reduce((s, d) => s + d.unidades, 0)
     if (listas > 0) {
-      entregables.push({ lineaId: lineaEntrega.lineaId, trabajoId: lineaEntrega.trabajoId, numero: lineaEntrega.numero, producto: lineaEntrega.producto, listas })
+      entregables.push({ lineaId: lineaEntrega.lineaId, trabajoId: lineaEntrega.trabajoId, numero: lineaEntrega.numero, codigo: lineaEntrega.codigo, producto: lineaEntrega.producto, listas })
     }
   }
 
@@ -255,7 +255,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="text-lg font-semibold">{l.clienteNombre}</span>
                   <span className="text-sm text-slate-600">
-                    Trabajo N.º {l.numero}
+                    Trabajo {l.codigo}
                     {permitidas.length > 1 && <> · <span className={COLOR_AREA[l.area].etiqueta}>{AREAS[l.area]}</span></>}
                   </span>
                 </span>
@@ -351,7 +351,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                       key={`plan-${l.trabajoId}`}
                       repo={repo}
                       trabajoId={l.trabajoId}
-                      numero={l.numero}
+                      codigo={l.codigo}
                       plan={planes.get(l.trabajoId)}
                       alGuardar={recargar}
                     />

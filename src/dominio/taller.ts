@@ -1,6 +1,7 @@
 import { distribucionPorEtapa } from './avance'
 import type { DatosOperacion } from './listo'
 import type { Area, Etapa, Rol } from './tipos'
+import { codigoTrabajo } from './trabajo'
 
 /** Áreas del taller que un rol puede ver y mover. Sin acceso al taller: lista vacía. */
 export function areasDelRol(rol: Rol): Area[] {
@@ -22,6 +23,8 @@ export interface LineaTaller {
   lineaId: string
   trabajoId: string
   numero: number
+  /** Código que ve el usuario (A-001, E-001). */
+  codigo: string
   clienteNombre: string
   producto: string
   /** Detalle anotado en recepción (p. ej. «Ø14 blanco»). */
@@ -42,8 +45,8 @@ export interface LineaTaller {
 }
 
 /**
- * Líneas del taller en las áreas dadas, ordenadas: urgentes primero, luego la recibida hace más
- * tiempo. Las líneas con todas sus unidades en una etapa final se omiten.
+ * Líneas del taller en las áreas dadas, ordenadas: urgentes primero, luego la recibida más
+ * recientemente (lo más nuevo arriba). Las líneas con todas sus unidades en una etapa final se omiten.
  */
 export function lineasEnCurso(datos: DatosOperacion, areas: Area[]): LineaTaller[] {
   const trabajoPorId = new Map(datos.trabajos.map((t) => [t.id, t]))
@@ -75,6 +78,7 @@ export function lineasEnCurso(datos: DatosOperacion, areas: Area[]): LineaTaller
       lineaId: l.id,
       trabajoId: t.id,
       numero: t.numero,
+      codigo: codigoTrabajo(t),
       clienteNombre: clientePorId.get(t.clienteId)?.nombre ?? 'Cliente desconocido',
       producto: l.producto,
       ...(l.nota ? { nota: l.nota } : {}),
@@ -92,8 +96,8 @@ export function lineasEnCurso(datos: DatosOperacion, areas: Area[]): LineaTaller
   return salida.sort(
     (a, b) =>
       Number(b.urgente) - Number(a.urgente) ||
-      Date.parse(a.recibidoEn) - Date.parse(b.recibidoEn) ||
-      a.numero - b.numero ||
+      Date.parse(b.recibidoEn) - Date.parse(a.recibidoEn) ||
+      b.numero - a.numero ||
       a.producto.localeCompare(b.producto, 'es'),
   )
 }

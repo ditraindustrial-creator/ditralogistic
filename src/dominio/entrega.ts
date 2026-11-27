@@ -1,6 +1,6 @@
 import type { Etapa, Linea, Movimiento, Trabajo } from './tipos'
 import { distribucionPorEtapa } from './avance'
-import { CANTIDAD_MAXIMA } from './trabajo'
+import { CANTIDAD_MAXIMA, codigoTrabajo } from './trabajo'
 
 /** Error de regla de negocio al entregar; el mensaje está en español y se muestra tal cual. */
 export class ErrorEntrega extends Error {
@@ -162,6 +162,8 @@ export interface LineaEntregable {
   lineaId: string
   trabajoId: string
   numero: number
+  /** Código que ve el usuario (A-001, E-001). */
+  codigo: string
   producto: string
   /** Detalle anotado en recepción. */
   nota?: string
@@ -171,8 +173,10 @@ export interface LineaEntregable {
 /** Líneas entregables de varios trabajos (en el orden dado), con el número de trabajo para mostrarlas. */
 export function lineasEntregables(datos: DatosEntrega, trabajoIds: string[]): LineaEntregable[] {
   return trabajoIds.flatMap((trabajoId) => {
-    const numero = datos.trabajos.find((t) => t.id === trabajoId)?.numero
-    if (numero === undefined) return []
-    return unidadesListasPorLinea(datos, trabajoId).map((l) => ({ ...l, trabajoId, numero }))
+    const t = datos.trabajos.find((x) => x.id === trabajoId)
+    if (t === undefined) return []
+    const numero = t.numero
+    const codigo = codigoTrabajo(t)
+    return unidadesListasPorLinea(datos, trabajoId).map((l) => ({ ...l, trabajoId, numero, codigo }))
   })
 }

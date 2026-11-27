@@ -57,7 +57,7 @@ describe('Recepcion', () => {
     await userEvent.type(screen.getByLabelText('Guía de retiro (opcional)'), 'G-77')
     await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
 
-    expect(await screen.findByText('Trabajo N.º 1 guardado')).toBeInTheDocument()
+    expect(await screen.findByText('Trabajo A-001 guardado')).toBeInTheDocument()
     expect(espiar).toHaveBeenCalledTimes(1)
     expect(espiar).toHaveBeenCalledWith({
       clienteId: 'c1', area: 'afilado', entrada: 'cliente', urgente: true, guiaRetiro: 'G-77',
@@ -85,7 +85,7 @@ describe('Recepcion', () => {
     await userEvent.type(screen.getByLabelText('Cantidad línea 2'), '2')
     await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
 
-    expect(await screen.findByText('Trabajo N.º 1 guardado')).toBeInTheDocument()
+    expect(await screen.findByText('Trabajo E-001 guardado')).toBeInTheDocument()
     expect(espiar.mock.calls[0][0].lineas).toEqual([
       { producto: 'Cuaderno', cantidad: 50, nota: 'COMPOSICION SEK, Ø14 blanco' },
       { producto: 'Libro tapa dura', cantidad: 2 },
@@ -180,7 +180,7 @@ describe('Recepcion', () => {
     await userEvent.type(screen.getByLabelText('Cantidad línea 1'), '2')
     const guardar = screen.getByRole('button', { name: 'Guardar trabajo' })
     await userEvent.dblClick(guardar)
-    expect(await screen.findByText('Trabajo N.º 1 guardado')).toBeInTheDocument()
+    expect(await screen.findByText('Trabajo A-001 guardado')).toBeInTheDocument()
     expect(espiar).toHaveBeenCalledTimes(1)
     expect(trabajos).toHaveLength(1)
   })
@@ -239,7 +239,7 @@ describe('Recepcion', () => {
       await userEvent.type(screen.getByLabelText('Producto línea 1'), 'Cuchillo 20 cm')
       await userEvent.type(screen.getByLabelText('Cantidad línea 1'), '3')
       await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
-      expect(await screen.findByText(/Trabajo N\.º \d+ guardado/)).toBeInTheDocument()
+      expect(await screen.findByText(/Trabajo [AE]-\d{3,} guardado/)).toBeInTheDocument()
       expect(espiar).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 'c1', entrada: 'ruta_propia' }))
       expect(onCreado).toHaveBeenCalledTimes(1)
       expect(onCreado).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 'c1', entrada: 'ruta_propia' }))
@@ -282,7 +282,7 @@ describe('Recepcion: reintentos sin duplicar', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo guardar el trabajo. Revisa tu conexión e inténtalo de nuevo.')
     await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
-    expect(await screen.findByText('Trabajo N.º 1 guardado')).toBeInTheDocument()
+    expect(await screen.findByText('Trabajo A-001 guardado')).toBeInTheDocument()
     expect(claves).toHaveLength(2)
     expect(claves[1]).toBe(claves[0])
     expect(trabajos).toHaveLength(1)
@@ -295,7 +295,7 @@ describe('Recepcion: reintentos sin duplicar', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Recibir otro trabajo' }))
     await llenar()
     await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
-    expect(await screen.findByText('Trabajo N.º 2 guardado')).toBeInTheDocument()
+    expect(await screen.findByText('Trabajo A-002 guardado')).toBeInTheDocument()
     expect(claves[1]).not.toBe(claves[0])
     expect(trabajos).toHaveLength(2)
   })
@@ -318,7 +318,7 @@ describe('Recepcion: cliente nuevo', () => {
     await userEvent.type(screen.getByLabelText('Producto línea 1'), 'Cuchillo')
     await userEvent.type(screen.getByLabelText('Cantidad línea 1'), '1')
     await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
-    await screen.findByText('Trabajo N.º 1 guardado')
+    await screen.findByText('Trabajo A-001 guardado')
     const nuevo = (await repo.listarClientes()).find((c) => c.rut === '9876543-3')!
     expect(nuevo).toMatchObject({ nombre: 'Ferretería Norte', direccion: 'Av. Siempre 1' })
     expect(await repo.listarAsignaciones()).toEqual([]) // sin recorrido: se asigna en Administración

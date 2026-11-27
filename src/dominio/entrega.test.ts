@@ -18,7 +18,7 @@ const etapas: Etapa[] = [
   { id: 'b2', area: 'encuadernacion', orden: 2, nombre: 'Terminado', esListo: true, esFinal: false },
 ]
 const trab = (id: string, area: Trabajo['area'] = 'afilado', guiaDespacho?: string): Trabajo => ({
-  id, numero: 1, clienteId: 'c1', area, entrada: 'ruta_propia', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z',
+  id, numero: 1, numeroArea: 1, clienteId: 'c1', area, entrada: 'ruta_propia', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z',
   urgente: false, ...(guiaDespacho ? { guiaDespacho } : {}),
 })
 const lin = (id: string, trabajoId: string, cantidad: number, producto = 'Cuchillo'): Linea => ({ id, trabajoId, producto, cantidad })
@@ -163,7 +163,7 @@ describe('lineasEntregables', () => {
     { id: 'e2', area: 'afilado', orden: 2, nombre: 'Listo', esListo: true, esFinal: false },
     { id: 'e3', area: 'afilado', orden: 3, nombre: 'Entregado', esListo: false, esFinal: true },
   ]
-  const t = (id: string, numero: number): Trabajo => ({ id, numero, clienteId: 'c', area: 'afilado', entrada: 'cliente', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z', urgente: false })
+  const t = (id: string, numero: number): Trabajo => ({ id, numero, numeroArea: numero, clienteId: 'c', area: 'afilado', entrada: 'cliente', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z', urgente: false })
   const m = (id: string, lineaId: string, cantidad: number, o: string | null, d: string): Movimiento => ({
     id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn: '2026-11-20T12:00:00Z',
   })
@@ -179,8 +179,8 @@ describe('lineasEntregables', () => {
       movimientos: [m('1', 'l1', 4, null, 'e2'), m('2', 'l2', 2, null, 'e2'), m('3', 'l3', 2, null, 'e1')],
     }
     expect(lineasEntregables(datos, ['t2', 't1'])).toEqual([
-      { lineaId: 'l2', trabajoId: 't2', numero: 12, producto: 'Tijera', listas: 2 },
-      { lineaId: 'l1', trabajoId: 't1', numero: 11, producto: 'Cuchillo', listas: 4 },
+      { lineaId: 'l2', trabajoId: 't2', numero: 12, codigo: 'A-012', producto: 'Tijera', listas: 2 },
+      { lineaId: 'l1', trabajoId: 't1', numero: 11, codigo: 'A-011', producto: 'Cuchillo', listas: 4 },
     ])
   })
 })

@@ -12,7 +12,7 @@ const etapas: Etapa[] = [
 ]
 const clientes: Cliente[] = [{ id: 'c1', nombre: 'Imprenta Sur', rut: '1-9' }]
 const trab = (id: string, guiaDespacho?: string): Trabajo => ({
-  id, numero: 1, clienteId: 'c1', area: 'afilado', entrada: 'ruta_propia', salida: 'ruta_propia',
+  id, numero: 1, numeroArea: 1, clienteId: 'c1', area: 'afilado', entrada: 'ruta_propia', salida: 'ruta_propia',
   recibidoEn: '2026-11-20T12:00:00Z', urgente: false, ...(guiaDespacho ? { guiaDespacho } : {}),
 })
 const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d: string): Movimiento => ({

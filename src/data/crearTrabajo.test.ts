@@ -120,7 +120,7 @@ describe('memoryRepo.crearTrabajo', () => {
 
 describe('supabaseRepo.crearTrabajo', () => {
   const fila = {
-    id: 't-1', numero: 41, cliente_id: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente',
+    id: 't-1', numero: 41, numero_area: 7, cliente_id: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente',
     recibido_en: '2026-11-24T10:00:00Z', guia_retiro: 'G-1', guia_despacho: null, factura: null, transporte: null,
     urgente: true, notas: null,
   }
@@ -134,7 +134,7 @@ describe('supabaseRepo.crearTrabajo', () => {
     const { repo, llamadas } = falso({ data: fila, error: null })
     const t = await repo.crearTrabajo(datos)
     expect(t).toEqual({
-      id: 't-1', numero: 41, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente',
+      id: 't-1', numero: 41, numeroArea: 7, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente',
       recibidoEn: '2026-11-24T10:00:00Z', guiaRetiro: 'G-1', urgente: true,
     })
     expect(llamadas).toHaveLength(1)

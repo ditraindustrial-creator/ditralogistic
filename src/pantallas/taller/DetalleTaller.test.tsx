@@ -12,7 +12,7 @@ const etapas: Etapa[] = [
   { id: 'b2', area: 'encuadernacion', orden: 2, nombre: 'Terminado', esListo: true, esFinal: false },
 ]
 const trab = (id: string, numero: number, area: Trabajo['area'], extra: Partial<Trabajo> = {}): Trabajo => ({
-  id, numero, clienteId: 'c1', area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false, ...extra,
+  id, numero, numeroArea: numero, clienteId: 'c1', area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false, ...extra,
 })
 const mov = (id: string, lineaId: string, cantidad: number, d: string): Movimiento => ({
   id, lineaId, cantidad, etapaOrigenId: null, etapaDestinoId: d, usuarioId: 'u', creadoEn: '2026-11-20T12:00:00Z',
@@ -72,7 +72,7 @@ describe('Taller: horas planificadas de encuadernación', () => {
     const repo = montar('operario_encuadernacion')
     expect(await screen.findByText(/Entrega: Total: sáb 28\/11 15:00/)).toBeInTheDocument()
     const fila = await abrir('Libro')
-    const plan = within(fila).getByRole('group', { name: /Entrega planificada · Trabajo N.º 12/ })
+    const plan = within(fila).getByRole('group', { name: /Entrega planificada · Trabajo E-012/ })
     expect(within(plan).getByLabelText('Trabajo completo')).toHaveValue('2099-11-28T15:00')
 
     await userEvent.click(within(plan).getByRole('button', { name: 'Agregar entrega parcial' }))

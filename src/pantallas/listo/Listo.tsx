@@ -65,9 +65,9 @@ function agrupar(filas: FilaListo[], hoy: string): Grupo[] {
     }
     g.filas.push(f)
   }
-  const cuando = (f: FilaListo) => (f.listoDesde ? Date.parse(f.listoDesde) : Infinity)
+  // Dentro de cada grupo, lo más nuevo arriba (fecha de recepción).
   for (const g of grupos.values()) {
-    g.filas.sort((a, b) => cuando(a) - cuando(b) || a.clienteNombre.localeCompare(b.clienteNombre, 'es') || a.numero - b.numero)
+    g.filas.sort((a, b) => Date.parse(b.recibidoEn) - Date.parse(a.recibidoEn) || b.numero - a.numero)
   }
   return [...grupos.values()].sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0) || a.titulo.localeCompare(b.titulo, 'es'))
 }
@@ -167,7 +167,7 @@ export default function Listo({ repo }: { repo: Repo }) {
                 <li key={f.trabajoId} className={`rounded border-l-8 p-3 shadow-sm ${COLOR_AREA[f.area].borde} ${COLOR_AREA[f.area].fondo}`}>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-lg font-semibold">{f.clienteNombre}</span>
-                    <span className="text-sm text-slate-600">Trabajo N.º {f.numero} · <span className={COLOR_AREA[f.area].etiqueta}>{AREAS[f.area]}</span></span>
+                    <span className="text-sm text-slate-600">Trabajo {f.codigo} · <span className={COLOR_AREA[f.area].etiqueta}>{AREAS[f.area]}</span></span>
                   </div>
                   <p className={`text-xl font-bold ${f.listas > 0 ? 'text-green-800' : 'text-slate-600'}`}>
                     {f.listas} de {f.pendientes} listas

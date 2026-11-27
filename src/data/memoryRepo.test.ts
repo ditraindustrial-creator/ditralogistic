@@ -10,7 +10,7 @@ const etapas: Etapa[] = [
 ]
 const trabajos: Trabajo[] = [
   {
-    id: 't1', numero: 1, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente',
+    id: 't1', numero: 1, numeroArea: 1, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente',
     recibidoEn: '2026-11-24T09:00:00Z', urgente: false,
   },
 ]
@@ -72,5 +72,20 @@ describe('memoryRepo.moverUnidades', () => {
     ])
     expect(res.filter((x) => x.status === 'fulfilled')).toHaveLength(1)
     await expect(r.moverUnidades('l1', 3, 'taller', 'listo')).rejects.toBeInstanceOf(ErrorMovimiento)
+  })
+})
+
+describe('memoryRepo.crearTrabajo: numeración por área', () => {
+  it('afilado y encuadernación llevan correlativos separados', async () => {
+    const r = crearMemoryRepo({
+      usuario: { id: 'u1', nombre: 'Sec', rol: 'secretaria' },
+      etapas, trabajos, lineas, movimientos: [recepcion],
+      clientes: [{ id: 'c1', nombre: 'Cliente', rut: '1-9' }],
+    })
+    const nuevo = (area: Trabajo['area']) =>
+      r.crearTrabajo({ clienteId: 'c1', area, entrada: 'cliente', lineas: [{ producto: 'X', cantidad: 1 }] })
+    expect((await nuevo('encuadernacion')).numeroArea).toBe(1)
+    expect((await nuevo('afilado')).numeroArea).toBe(2) // ya había un afilado (t1)
+    expect((await nuevo('encuadernacion')).numeroArea).toBe(2)
   })
 })

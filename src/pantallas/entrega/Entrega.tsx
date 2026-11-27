@@ -22,7 +22,7 @@ export interface ResultadoEntrega {
   documento: string
   transporte?: string
   unidades: number
-  trabajos: { trabajoId: string; numero: number }[]
+  trabajos: { trabajoId: string; numero: number; codigo: string }[]
 }
 
 const unidades = (n: number) => `${n} ${n === 1 ? 'unidad' : 'unidades'}`
@@ -103,7 +103,7 @@ export default function Entrega({
       const opciones: OpcionesEntrega = { clave }
       if (transp) opciones.transporte = transp
       await repo.entregarUnidades(entregas, doc, opciones)
-      const trabajos = [...new Map(elegidas.map((l) => [l.trabajoId, { trabajoId: l.trabajoId, numero: l.numero }])).values()]
+      const trabajos = [...new Map(elegidas.map((l) => [l.trabajoId, { trabajoId: l.trabajoId, numero: l.numero, codigo: l.codigo }])).values()]
       const resultado: ResultadoEntrega = { entregas, documento: doc, unidades: entregas.reduce((s, e) => s + e.cantidad, 0), trabajos }
       if (transp) resultado.transporte = transp
       setHecho(resultado)
@@ -154,7 +154,7 @@ export default function Entrega({
         <ul className="flex flex-col gap-4">
           {[...porTrabajo.values()].map((ls) => (
             <li key={ls[0].trabajoId} className="flex flex-col gap-3">
-              <span className="font-semibold">Trabajo N.º {ls[0].numero}</span>
+              <span className="font-semibold">Trabajo {ls[0].codigo}</span>
               {ls.map((l) => {
                 const marcada = !desmarcadas.has(l.lineaId)
                 return (

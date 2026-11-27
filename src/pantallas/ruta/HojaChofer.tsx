@@ -97,7 +97,7 @@ export default function HojaChofer({ repo, usuario }: { repo: Repo; usuario: Usu
                 const t = trabajoPorId.get(f.trabajoId)
                 return (
                   <li key={f.trabajoId} className="flex flex-col gap-2 rounded bg-slate-50 p-3">
-                    <span className="text-lg">N.º {f.numero} · {datos ? textoProductos(datos, f.trabajoId) : `${f.listas} listas`}</span>
+                    <span className="text-lg">{f.codigo} · {datos ? textoProductos(datos, f.trabajoId) : `${f.listas} listas`}</span>
                     {t?.guiaDespacho && <span className="text-slate-700">Guía: {t.guiaDespacho}</span>}
                     {resumenPlan(f.plan, fechaHoraSantiago(new Date().toISOString())) && (
                       <span className="font-semibold text-amber-800">Entrega planificada: {resumenPlan(f.plan, fechaHoraSantiago(new Date().toISOString()))}</span>

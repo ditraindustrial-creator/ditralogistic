@@ -19,7 +19,7 @@ const asignaciones: Asignacion[] = [{ clienteId: 'c1', recorridoId: 'r1', fija: 
 // 2026-11-23 es lunes.
 const HOY = '2026-11-23'
 const trab = (id: string, numero: number, clienteId: string, area: Trabajo['area'] = 'afilado'): Trabajo => ({
-  id, numero, clienteId, area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
+  id, numero, numeroArea: numero, clienteId, area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
 })
 const lin = (id: string, trabajoId: string, cantidad: number): Linea => ({ id, trabajoId, producto: 'X', cantidad })
 let n = 0
@@ -45,7 +45,7 @@ describe('resumenListo', () => {
       ],
     }))
     expect(r).toEqual([{
-      trabajoId: 't1', numero: 7, clienteId: 'c1', clienteNombre: 'Imprenta Sur', area: 'afilado', salida: 'cliente',
+      trabajoId: 't1', numero: 7, codigo: 'A-007', recibidoEn: '2026-11-20T12:00:00Z', clienteId: 'c1', clienteNombre: 'Imprenta Sur', area: 'afilado', salida: 'cliente',
       listas: 4, total: 6, entregadas: 0, pendientes: 6, listoDesde: '2026-11-22T15:30:00Z',
       rutas: [{ recorridoId: 'r1', recorridoNombre: 'Norte', dia: 2 }],
       proximaRuta: { recorridoId: 'r1', recorridoNombre: 'Norte', dia: 2, fecha: '2026-11-24' },

@@ -4,6 +4,7 @@ import { nuevaClave } from '../../dominio/clave'
 import { puedeCrearClientes } from '../../dominio/permisos'
 import type { Area, Cliente, Linea, Modalidad, Producto, Trabajo, UsuarioActual } from '../../dominio/tipos'
 import {
+  codigoTrabajo,
   ErrorTrabajo,
   filtrarClientes,
   parsearCantidad,
@@ -234,7 +235,7 @@ export default function Recepcion({
   if (guardado && edicion) {
     return (
       <div className="flex flex-col gap-4" role="status">
-        <p className="text-2xl font-bold text-teal-800">Trabajo N.º {guardado.numero} actualizado</p>
+        <p className="text-2xl font-bold text-teal-800">Trabajo {codigoTrabajo(guardado)} actualizado</p>
         <p className="text-lg">{cliente?.nombre}</p>
         <button type="button" className={botonGrande} onClick={() => onEditado?.(guardado)}>Volver a la lista</button>
       </div>
@@ -244,7 +245,7 @@ export default function Recepcion({
   if (guardado) {
     return (
       <div className="flex flex-col gap-4" role="status">
-        <p className="text-2xl font-bold text-teal-800">Trabajo N.º {guardado.numero} guardado</p>
+        <p className="text-2xl font-bold text-teal-800">Trabajo {codigoTrabajo(guardado)} guardado</p>
         <p className="text-lg">{cliente?.nombre}</p>
         <button type="button" className={botonGrande} onClick={limpiar}>Recibir otro trabajo</button>
       </div>
@@ -262,7 +263,7 @@ export default function Recepcion({
     <div className="flex flex-col gap-5">
       {edicion && (
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-xl font-bold">Editando trabajo N.º {edicion.trabajo.numero}</h2>
+          <h2 className="text-xl font-bold">Editando trabajo {codigoTrabajo(edicion.trabajo)}</h2>
           <button type="button" className={botonClaro} onClick={alCancelar}>Cancelar</button>
         </div>
       )}

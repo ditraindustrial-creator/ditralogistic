@@ -81,7 +81,7 @@ describe('etiquetas y hora de Chile', () => {
 
 describe('planesPorTrabajo y resumenPlan', () => {
   const t = (id: string, entregaPlanificada?: string): Trabajo => ({
-    id, numero: 1, clienteId: 'c', area: 'encuadernacion', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
+    id, numero: 1, numeroArea: 1, clienteId: 'c', area: 'encuadernacion', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
     ...(entregaPlanificada ? { entregaPlanificada } : {}),
   })
   const parciales: EntregaParcial[] = [

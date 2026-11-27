@@ -12,7 +12,7 @@ const etapas: Etapa[] = [
   { id: 'a2', area: 'afilado', orden: 2, nombre: 'Listo', esListo: true, esFinal: false },
 ]
 const trab = (id: string, numero: number, area: Trabajo['area'] = 'encuadernacion', urgente = false): Trabajo => ({
-  id, numero, clienteId: 'c1', area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente,
+  id, numero, numeroArea: numero, clienteId: 'c1', area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente,
 })
 const lin = (id: string, trabajoId: string, cantidad: number, producto = 'Libro'): Linea => ({ id, trabajoId, producto, cantidad })
 let n = 0
@@ -169,10 +169,10 @@ describe('reporteDiario', () => {
         mov('l2', 2, null, 'e2', '2026-11-24T13:00:00Z'),
       ],
     }))
-    expect(r.enProduccion.map((f) => [f.producto, f.cantidad])).toEqual([['Libro', 1], ['Cuaderno', 2]])
+    expect(r.enProduccion.map((f) => [f.producto, f.cantidad])).toEqual([['Cuaderno', 2], ['Libro', 1]])
   })
 
-  it('ordena lo más antiguo primero y los urgentes antes', () => {
+  it('ordena lo más reciente primero y los urgentes antes', () => {
     const r = reporteDiario(HOY, datos({
       trabajos: [trab('t1', 1), trab('t2', 2), trab('t3', 3, 'encuadernacion', true)],
       lineas: [lin('l1', 't1', 1), lin('l2', 't2', 1), lin('l3', 't3', 1)],
@@ -182,7 +182,7 @@ describe('reporteDiario', () => {
         mov('l3', 1, null, 'e2', '2026-11-24T16:00:00Z'),
       ],
     }))
-    expect(r.enProduccion.map((f) => f.trabajoNumero)).toEqual([3, 2, 1])
+    expect(r.enProduccion.map((f) => f.trabajoNumero)).toEqual([3, 1, 2])
   })
 
   it('ignora sin romper las líneas con etapas desconocidas y las cuenta en sinClasificar', () => {

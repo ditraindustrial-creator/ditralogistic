@@ -101,11 +101,11 @@ interface ParcialForm {
  * cada entrega parcial (con cantidad y nota opcionales). Guardar reemplaza el plan completo.
  */
 export function PlanEntrega({
-  repo, trabajoId, numero, plan, alGuardar,
+  repo, trabajoId, codigo, plan, alGuardar,
 }: {
   repo: Repo
   trabajoId: string
-  numero: number
+  codigo: string
   plan?: PlanTrabajo
   alGuardar: () => Promise<void> | void
 }) {
@@ -163,7 +163,7 @@ export function PlanEntrega({
 
   return (
     <fieldset className="flex flex-col gap-3 rounded bg-amber-50 p-3">
-      <legend className="text-lg font-semibold">Entrega planificada · Trabajo N.º {numero}</legend>
+      <legend className="text-lg font-semibold">Entrega planificada · Trabajo {codigo}</legend>
       <label className="flex flex-col gap-1">
         Trabajo completo
         <input type="datetime-local" className={campo} value={entrega} onChange={(e) => setEntrega(e.target.value)} />

@@ -61,7 +61,10 @@ export interface Movimiento {
 
 export interface Trabajo {
   id: string
+  /** Número interno (correlativo global de la base); no se muestra. */
   numero: number
+  /** Correlativo propio del área: 1, 2, 3… en afilado y aparte en encuadernación. Se muestra como A-001 / E-001. */
+  numeroArea: number
   clienteId: string
   area: Area
   entrada: Modalidad

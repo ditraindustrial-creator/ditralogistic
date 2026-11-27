@@ -171,6 +171,7 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       const trabajo: Trabajo = {
         id: `trab-${siguienteId++}`,
         numero: trabajos.reduce((m, t) => Math.max(m, t.numero), 0) + 1,
+        numeroArea: trabajos.filter((t) => t.area === datos.area).reduce((m, t) => Math.max(m, t.numeroArea), 0) + 1,
         clienteId: datos.clienteId,
         area: datos.area,
         entrada: datos.entrada,

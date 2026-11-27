@@ -17,7 +17,7 @@ const etapas: Etapa[] = [
   { id: 'b2', area: 'encuadernacion', orden: 2, nombre: 'Terminado', esListo: true, esFinal: false },
 ]
 const trab = (id: string, numero: number, clienteId: string, area: Trabajo['area'], urgente = false, recibidoEn = '2026-11-20T12:00:00Z'): Trabajo => ({
-  id, numero, clienteId, area, entrada: 'cliente', salida: 'cliente', recibidoEn, urgente,
+  id, numero, numeroArea: numero, clienteId, area, entrada: 'cliente', salida: 'cliente', recibidoEn, urgente,
 })
 const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d: string): Movimiento => ({
   id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn: '2026-11-20T12:00:00Z',
@@ -122,12 +122,15 @@ describe('Taller', () => {
     expect(screen.queryByText(/^Cuchillo · 6$/)).not.toBeInTheDocument()
   })
 
-  it('lista urgentes primero', async () => {
+  it('lista urgentes primero y luego lo más nuevo arriba', async () => {
     montar('operario_afilado')
     await screen.findAllByRole('listitem')
     const items = screen.getAllByRole('listitem').map((li) => li.textContent ?? '')
-    expect(items[0]).toContain('Tijera')
-    expect(items[1]).toContain('Cuchillo')
+    expect(items[0]).toContain('Tijera') // urgente
+    expect(items[1]).toContain('Hacha') // recibido el 24
+    expect(items[1]).toContain('Trabajo A-015')
+    expect(items[2]).toContain('Sierra') // recibido el 23
+    expect(items[items.length - 1]).toContain('Cuchillo') // el más antiguo
   })
 
   it('dos toques seguidos en Mover producen una sola llamada', async () => {
