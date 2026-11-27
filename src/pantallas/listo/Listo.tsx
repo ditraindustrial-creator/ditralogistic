@@ -6,6 +6,7 @@ import { fechaHoraSantiago, resumenPlan } from '../../dominio/planificacion'
 import type { Area } from '../../dominio/tipos'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import { useFechaPorDefecto } from '../useFechaPorDefecto'
+import { COLOR_AREA } from '../colorArea'
 
 const elMismoDia = (hoy: string) => hoy
 
@@ -163,10 +164,10 @@ export default function Listo({ repo }: { repo: Repo }) {
             {g.filas.map((f) => {
               const completo = f.pendientes > 0 && f.listas === f.pendientes
               return (
-                <li key={f.trabajoId} className={`rounded border-l-8 bg-white p-3 shadow-sm ${f.listas > 0 ? 'border-teal-600' : 'border-slate-300'}`}>
+                <li key={f.trabajoId} className={`rounded border-l-8 p-3 shadow-sm ${COLOR_AREA[f.area].borde} ${COLOR_AREA[f.area].fondo}`}>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-lg font-semibold">{f.clienteNombre}</span>
-                    <span className="text-sm text-slate-600">Trabajo N.º {f.numero} · {AREAS[f.area]}</span>
+                    <span className="text-sm text-slate-600">Trabajo N.º {f.numero} · <span className={COLOR_AREA[f.area].etiqueta}>{AREAS[f.area]}</span></span>
                   </div>
                   <p className={`text-xl font-bold ${f.listas > 0 ? 'text-teal-800' : 'text-slate-600'}`}>
                     {f.listas} de {f.pendientes} listas

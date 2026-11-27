@@ -11,6 +11,7 @@ import Entrega from '../entrega/Entrega'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import { useFechaPorDefecto } from '../useFechaPorDefecto'
 import { agruparParadas, ControlVisita, ESTADO_VISITA, fechaLarga, InsigniaParada, NOMBRES_SALIDA, Plegable, textoProductos, useVisitas } from './comun'
+import { COLOR_AREA } from '../colorArea'
 
 const ERROR_VISITA = 'No se pudo guardar la visita. Revisa tu conexión e inténtalo de nuevo.'
 const ERROR_SALIDA = 'No se pudo cambiar la salida. Revisa tu conexión e inténtalo de nuevo.'
@@ -271,10 +272,10 @@ function FilasSueltas({
       {ayuda && <p className="text-sm text-slate-600 print:hidden">{ayuda}</p>}
       <ul className="flex flex-col gap-3">
         {filas.map((f) => (
-          <li key={f.trabajoId} className="flex flex-col gap-2 rounded border-l-8 border-slate-300 bg-white p-3 shadow-sm print:shadow-none">
+          <li key={f.trabajoId} className={`flex flex-col gap-2 rounded border-l-8 p-3 shadow-sm print:shadow-none ${COLOR_AREA[f.area].borde} ${COLOR_AREA[f.area].fondo}`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-lg font-semibold">{f.clienteNombre}</span>
-              <span className="text-sm text-slate-700">N.º {f.numero} · {AREAS[f.area]}</span>
+              <span className="text-sm text-slate-700">N.º {f.numero} · <span className={COLOR_AREA[f.area].etiqueta}>{AREAS[f.area]}</span></span>
             </div>
             <p>{datos ? textoProductos(datos, f.trabajoId) : `${f.listas} listas`}</p>
             {transporteDe?.(f) && <p className="text-slate-700">Transporte: {transporteDe(f)}</p>}

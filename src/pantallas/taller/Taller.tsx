@@ -9,6 +9,7 @@ import type { Area, Producto, UsuarioActual } from '../../dominio/tipos'
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import Entrega from '../entrega/Entrega'
 import { DetalleLinea, PlanEntrega } from './DetalleTaller'
+import { COLOR_AREA } from '../colorArea'
 
 const AREAS: Record<Area, string> = { afilado: 'Afilado', encuadernacion: 'Encuadernación' }
 const ERROR_GENERICO = 'No se pudo mover las unidades. Revisa tu conexión e inténtalo de nuevo.'
@@ -235,7 +236,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
           const abierta = sel?.lineaId === l.lineaId
           const max = sel ? disponibles(l, sel.origenId) : 0
           return (
-            <li key={l.lineaId} className={`rounded border-l-8 bg-white shadow-sm ${l.urgente ? 'border-red-600' : 'border-slate-300'}`}>
+            <li key={l.lineaId} className={`rounded border-l-8 shadow-sm ${COLOR_AREA[l.area].fondo} ${l.urgente ? 'border-red-600' : COLOR_AREA[l.area].borde}`}>
               <button
                 type="button"
                 aria-expanded={abierta}
@@ -245,7 +246,8 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="text-lg font-semibold">{l.clienteNombre}</span>
                   <span className="text-sm text-slate-600">
-                    Trabajo N.º {l.numero}{permitidas.length > 1 ? ` · ${AREAS[l.area]}` : ''}
+                    Trabajo N.º {l.numero}
+                    {permitidas.length > 1 && <> · <span className={COLOR_AREA[l.area].etiqueta}>{AREAS[l.area]}</span></>}
                   </span>
                 </span>
                 <span className="text-xl font-bold">{l.producto} · {l.cantidad}</span>
