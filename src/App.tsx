@@ -5,7 +5,7 @@ import { puedeVer } from './dominio/permisos'
 import Listo from './pantallas/listo/Listo'
 import Maestros from './pantallas/admin/Maestros'
 import Reporte from './pantallas/reporte/Reporte'
-import Recepcion from './pantallas/recepcion/Recepcion'
+import PantallaRecepcion from './pantallas/recepcion/PantallaRecepcion'
 import HojaChofer from './pantallas/ruta/HojaChofer'
 import RutaManana from './pantallas/ruta/RutaManana'
 import Taller from './pantallas/taller/Taller'
@@ -109,7 +109,7 @@ export default function App({ repo }: { repo: Repo }) {
           {actual.id === 'admin' ? (
             <div className="mt-4"><Maestros repo={repo} usuario={usuario} /></div>
           ) : actual.id === 'recepcion' ? (
-            <div className="mt-4"><Recepcion repo={repo} usuario={usuario} /></div>
+            <div className="mt-4"><PantallaRecepcion repo={repo} usuario={usuario} /></div>
           ) : actual.id === 'taller' ? (
             <div className="mt-4"><Taller repo={repo} usuario={usuario} /></div>
           ) : actual.id === 'ruta' ? (

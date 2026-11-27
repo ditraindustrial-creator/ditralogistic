@@ -1,6 +1,9 @@
 import type { Repo } from './repo'
 import type { Asignacion, Cliente, EntregaParcial, Etapa, Linea, Movimiento, Producto, Recorrido, Rol, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
-import { ErrorTrabajo, MODALIDADES, primeraEtapa, RECEPCION_CLAVE_USADA, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
+import {
+  ErrorTrabajo, MODALIDADES, primeraEtapa, RECEPCION_CLAVE_USADA, sigueEnRecepcion, TRABAJO_YA_EN_TALLER, validarEdicionTrabajo,
+  validarTrabajoNuevo, type DatosEdicionTrabajo, type DatosTrabajoNuevo,
+} from '../dominio/trabajo'
 import { ENTREGA_CLAVE_USADA, ErrorEntrega, planificarEntrega, validarEntradaEntrega, validarTransporte } from '../dominio/entrega'
 import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
 import { diaLocal } from '../dominio/fechas'
@@ -197,6 +200,70 @@ export function crearMemoryRepo(opciones: MemoryRepoOpciones = {}): RepoMemoria 
       }
       avisar()
       return { ...trabajo }
+    },
+    async editarTrabajo(trabajoId: string, datos: DatosEdicionTrabajo) {
+      if (!actual) throw new ErrorTrabajo('Debes iniciar sesión para editar trabajos.')
+      if (!esGestion(actual)) throw new ErrorTrabajo('No tienes permiso para editar trabajos.')
+      const i = trabajos.findIndex((t) => t.id === trabajoId)
+      if (i < 0) throw new ErrorTrabajo('El trabajo no existe.')
+      const previo = trabajos[i]
+      if (!sigueEnRecepcion(trabajoId, lineas, movimientos)) throw new ErrorTrabajo(TRABAJO_YA_EN_TALLER)
+      const errores = validarEdicionTrabajo(datos)
+      if (errores.length > 0) throw new ErrorTrabajo(errores[0])
+      if (!clientes.some((c) => c.id === datos.clienteId)) throw new ErrorTrabajo('El cliente no existe.')
+      const propias = lineas.filter((l) => l.trabajoId === trabajoId)
+      datos.lineas.forEach((l, n) => {
+        if (l.id !== undefined && !propias.some((p) => p.id === l.id)) throw new ErrorTrabajo(`La línea ${n + 1} no es de este trabajo.`)
+      })
+      const primera = primeraEtapa(etapas, previo.area)
+      if (!primera) throw new ErrorTrabajo('El área no tiene etapas configuradas.')
+      const total = datos.lineas.reduce((s, l) => s + l.cantidad, 0)
+      const planificadas = parciales.filter((p) => p.trabajoId === trabajoId).reduce((s, p) => s + (p.cantidad ?? 0), 0)
+      if (planificadas > total) {
+        throw new ErrorTrabajo(`Las entregas parciales planificadas suman ${planificadas} unidades, pero el trabajo quedaría con ${total}. Ajusta primero la planificación.`)
+      }
+      const texto = (s?: string) => s?.trim() || undefined
+      // Líneas quitadas: se borran con su recepción inicial.
+      const quedan = new Set(datos.lineas.map((l) => l.id).filter((x): x is string => x !== undefined))
+      for (const p of propias) {
+        if (quedan.has(p.id)) continue
+        lineas.splice(lineas.indexOf(p), 1)
+        for (let k = movimientos.length - 1; k >= 0; k--) if (movimientos[k].lineaId === p.id) movimientos.splice(k, 1)
+      }
+      const ahora = new Date().toISOString()
+      for (const l of datos.lineas) {
+        const nota = texto(l.nota)
+        if (l.id !== undefined) {
+          const k = lineas.findIndex((x) => x.id === l.id)
+          const { nota: _n, ...resto } = lineas[k]
+          lineas[k] = { ...resto, producto: l.producto.trim(), cantidad: l.cantidad, ...(nota ? { nota } : {}) }
+          // La recepción inicial pasa a ser una sola, con la nueva cantidad (mismo usuario y fecha).
+          const recepciones = movimientos.filter((m) => m.lineaId === l.id)
+          const base = recepciones[0]
+          for (const m of recepciones) movimientos.splice(movimientos.indexOf(m), 1)
+          movimientos.push({
+            id: base?.id ?? `mov-${siguienteId++}`, lineaId: l.id, cantidad: l.cantidad, etapaOrigenId: null,
+            etapaDestinoId: primera.id, usuarioId: base?.usuarioId ?? actual.id, creadoEn: base?.creadoEn ?? ahora,
+          })
+        } else {
+          const linea: Linea = { id: `lin-${siguienteId++}`, trabajoId, producto: l.producto.trim(), cantidad: l.cantidad, ...(nota ? { nota } : {}) }
+          lineas.push(linea)
+          movimientos.push({
+            id: `mov-${siguienteId++}`, lineaId: linea.id, cantidad: l.cantidad,
+            etapaOrigenId: null, etapaDestinoId: primera.id, usuarioId: actual.id, creadoEn: ahora,
+          })
+        }
+      }
+      const { guiaRetiro: _g, notas: _t, ...base } = previo
+      const guia = texto(datos.guiaRetiro)
+      const notas = texto(datos.notas)
+      const editado: Trabajo = {
+        ...base, clienteId: datos.clienteId, urgente: datos.urgente ?? false,
+        ...(guia ? { guiaRetiro: guia } : {}), ...(notas ? { notas } : {}),
+      }
+      trabajos[i] = editado
+      avisar()
+      return { ...editado }
     },
     async cargarTodo() {
       return {
