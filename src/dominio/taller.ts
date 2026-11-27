@@ -24,6 +24,8 @@ export interface LineaTaller {
   numero: number
   clienteNombre: string
   producto: string
+  /** Detalle anotado en recepción (p. ej. «Ø14 blanco»). */
+  nota?: string
   /** Servicio y detalle técnico que definió el taller (si ya lo hizo). */
   servicio?: string
   detalleTaller?: string
@@ -75,6 +77,7 @@ export function lineasEnCurso(datos: DatosOperacion, areas: Area[]): LineaTaller
       numero: t.numero,
       clienteNombre: clientePorId.get(t.clienteId)?.nombre ?? 'Cliente desconocido',
       producto: l.producto,
+      ...(l.nota ? { nota: l.nota } : {}),
       ...(l.servicio ? { servicio: l.servicio } : {}),
       ...(l.detalleTaller ? { detalleTaller: l.detalleTaller } : {}),
       area: t.area,

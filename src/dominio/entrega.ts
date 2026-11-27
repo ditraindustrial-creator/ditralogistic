@@ -143,16 +143,16 @@ export function planificarEntrega(datos: DatosEntrega, entregas: Entrega[], docu
 export function unidadesListasPorLinea(
   datos: DatosEntrega,
   trabajoId: string,
-): { lineaId: string; producto: string; listas: number }[] {
+): { lineaId: string; producto: string; nota?: string; listas: number }[] {
   const trabajo = datos.trabajos.find((t) => t.id === trabajoId)
   if (!trabajo) return []
   const listo = new Set(datos.etapas.filter((e) => e.area === trabajo.area && e.esListo).map((e) => e.id))
-  const salida: { lineaId: string; producto: string; listas: number }[] = []
+  const salida: { lineaId: string; producto: string; nota?: string; listas: number }[] = []
   for (const l of datos.lineas.filter((x) => x.trabajoId === trabajoId)) {
     const dist = distribucionPorEtapa(datos.movimientos.filter((m) => m.lineaId === l.id))
     let listas = 0
     for (const [etapaId, n] of dist) if (listo.has(etapaId) && n > 0) listas += n
-    if (listas > 0) salida.push({ lineaId: l.id, producto: l.producto, listas })
+    if (listas > 0) salida.push({ lineaId: l.id, producto: l.producto, ...(l.nota ? { nota: l.nota } : {}), listas })
   }
   return salida
 }
@@ -163,6 +163,8 @@ export interface LineaEntregable {
   trabajoId: string
   numero: number
   producto: string
+  /** Detalle anotado en recepción. */
+  nota?: string
   listas: number
 }
 

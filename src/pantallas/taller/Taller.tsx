@@ -249,6 +249,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                   </span>
                 </span>
                 <span className="text-xl font-bold">{l.producto} · {l.cantidad}</span>
+                {l.nota && <span className="text-base">Detalle: {l.nota}</span>}
                 {l.servicio && <span className="text-base">Servicio: {l.servicio}</span>}
                 {l.area === 'encuadernacion' && resumenPlan(planes.get(l.trabajoId), ahora) && (
                   <span className="text-base font-semibold text-amber-800">Entrega: {resumenPlan(planes.get(l.trabajoId), ahora)}</span>

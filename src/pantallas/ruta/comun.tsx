@@ -20,9 +20,11 @@ export function fechaLarga(fecha: string): string {
   return `${DIAS[new Date(Date.UTC(a, m - 1, d)).getUTCDay()]} ${d} de ${MESES[m - 1]}`
 }
 
-/** "Cuchillo 4, Tijera 1": unidades listas por producto de un trabajo. */
+/** "Cuchillo 4, Cuaderno (Ø14 blanco) 1": unidades listas por producto (con su detalle) de un trabajo. */
 export function textoProductos(datos: DatosOperacion, trabajoId: string): string {
-  return unidadesListasPorLinea(datos, trabajoId).map((l) => `${l.producto} ${l.listas}`).join(', ')
+  return unidadesListasPorLinea(datos, trabajoId)
+    .map((l) => `${l.producto}${l.nota ? ` (${l.nota})` : ''} ${l.listas}`)
+    .join(', ')
 }
 
 export const ERROR_VISITAS = 'No se pudieron cargar las visitas. Revisa tu conexión.'
