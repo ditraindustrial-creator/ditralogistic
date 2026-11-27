@@ -5,7 +5,7 @@ import { ErrorPlanificacion } from '../dominio/planificacion'
 import type { Rol, Trabajo } from '../dominio/tipos'
 
 const trab = (id: string, area: Trabajo['area']): Trabajo => ({
-  id, numero: 1, clienteId: 'c1', area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
+  id, numero: 1, numeroArea: 1, clienteId: 'c1', area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
 })
 const repoDe = (rol: Rol) =>
   crearMemoryRepo({
@@ -50,7 +50,7 @@ describe('supabaseRepo: filas y errores de Task 11', () => {
       id: 'l', trabajoId: 't', producto: 'P', cantidad: 2, servicio: 'Afilado', detalleTaller: 'Ángulo',
     })
     const t = filaATrabajo({
-      id: 't', numero: 1, cliente_id: 'c', area: 'encuadernacion', entrada: 'cliente', salida: 'cliente', recibido_en: 'x',
+      id: 't', numero: 1, numero_area: 1, cliente_id: 'c', area: 'encuadernacion', entrada: 'cliente', salida: 'cliente', recibido_en: 'x',
       guia_retiro: null, guia_despacho: null, factura: null, transporte: null, urgente: false, notas: null, entrega_planificada: '2026-11-28T15:00:00',
     })
     expect(t.entregaPlanificada).toBe('2026-11-28T15:00')

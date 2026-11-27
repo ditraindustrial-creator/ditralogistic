@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import type { DatosOperacion } from '../../dominio/listo'
 import type { UsuarioActual } from '../../dominio/tipos'
-import { trabajosEnRecepcion } from '../../dominio/trabajo'
+import { codigoTrabajo, coincideCodigo, trabajosEnRecepcion } from '../../dominio/trabajo'
 import Recepcion, { type EdicionTrabajo } from './Recepcion'
 import { COLOR_AREA } from '../colorArea'
 import { COLOR_FASE } from '../colorEtapa'
@@ -58,10 +58,11 @@ export default function EditarRecibidos({ repo, usuario }: { repo: Repo; usuario
 
   const clientes = new Map(datos.clientes.map((c) => [c.id, c]))
   const q = plano(busqueda.trim()).replace(/^n\.?\s*º?\s*/, '')
+  const qCodigo = q.replace(/[\s-]/g, '')
   const lista = trabajosEnRecepcion(datos.trabajos, datos.lineas, datos.movimientos).filter((t) => {
     if (q === '') return true
     const c = clientes.get(t.clienteId)
-    return String(t.numero) === q || (c !== undefined && (plano(c.nombre).includes(q) || plano(c.rut).includes(q)))
+    return coincideCodigo(t, qCodigo) || (c !== undefined && (plano(c.nombre).includes(q) || plano(c.rut).includes(q)))
   })
 
   return (
@@ -74,7 +75,7 @@ export default function EditarRecibidos({ repo, usuario }: { repo: Repo; usuario
         <input
           type="search"
           autoComplete="off"
-          placeholder="N.º de trabajo, cliente o RUT"
+          placeholder="N.º de trabajo (A-001, E-001), cliente o RUT"
           className={`${campo} font-normal`}
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
@@ -91,7 +92,7 @@ export default function EditarRecibidos({ repo, usuario }: { repo: Repo; usuario
               <li key={t.id} className={`flex items-center justify-between gap-2 rounded border-l-8 p-3 ${COLOR_AREA[t.area].borde} ${COLOR_AREA[t.area].fondo}`}>
                 <div className="min-w-0">
                   <p className="text-lg font-semibold">
-                    N.º {t.numero} · {c?.nombre ?? 'Cliente desconocido'}
+                    {codigoTrabajo(t)} · {c?.nombre ?? 'Cliente desconocido'}
                     <span className={`ml-2 ${COLOR_FASE.recibido.etiqueta}`}>Recibido</span>
                   </p>
                   <p className="text-sm text-slate-700">
@@ -100,7 +101,7 @@ export default function EditarRecibidos({ repo, usuario }: { repo: Repo; usuario
                 </div>
                 <button
                   type="button"
-                  aria-label={`Editar trabajo ${t.numero}`}
+                  aria-label={`Editar trabajo ${codigoTrabajo(t)}`}
                   className="min-h-12 shrink-0 rounded bg-teal-700 px-4 py-2 text-lg font-semibold text-white"
                   onClick={() => setEditando({ trabajo: t, lineas: suyas, cliente: c })}
                 >

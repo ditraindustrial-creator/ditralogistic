@@ -43,7 +43,9 @@ export interface RutaDelDia {
   porEncomienda: FilaListo[]
 }
 
-const porNombre = (a: FilaListo, b: FilaListo) => a.clienteNombre.localeCompare(b.clienteNombre, 'es') || a.numero - b.numero
+/** Lo más nuevo arriba (fecha de recepción), luego por cliente. */
+const porReciente = (a: FilaListo, b: FilaListo) =>
+  Date.parse(b.recibidoEn) - Date.parse(a.recibidoEn) || b.numero - a.numero || a.clienteNombre.localeCompare(b.clienteNombre, 'es')
 
 /**
  * Ordena paradas (sin modificar la lista recibida): por recorrido (nombre), las extra al final, y
@@ -110,8 +112,8 @@ export function armarRuta(
   for (const v of visitas) if (v.fecha === fecha) visitaPorCliente.set(v.clienteId, v)
 
   const listas = filas.filter((f) => f.listas > 0)
-  const retiranEnMostrador = listas.filter((f) => f.salida === 'cliente').sort(porNombre)
-  const porEncomienda = listas.filter((f) => f.salida === 'encomienda').sort(porNombre)
+  const retiranEnMostrador = listas.filter((f) => f.salida === 'cliente').sort(porReciente)
+  const porEncomienda = listas.filter((f) => f.salida === 'encomienda').sort(porReciente)
   const porRuta = listas.filter((f) => f.salida === 'ruta_propia')
   const porRutaDe = new Map<string, FilaListo[]>()
   for (const f of porRuta) porRutaDe.set(f.clienteId, [...(porRutaDe.get(f.clienteId) ?? []), f])
@@ -142,7 +144,7 @@ export function armarRuta(
       dia: asignada?.r.dia ?? null,
       fija: asignada?.a.fija ?? false,
       orden: asignada?.a.orden ?? 0,
-      entregar: [...(porRutaDe.get(clienteId) ?? [])].sort((a, b) => a.numero - b.numero),
+      entregar: [...(porRutaDe.get(clienteId) ?? [])].sort(porReciente),
       confirmada: visita?.confirmada ?? 'sin_respuesta',
       requiereConfirmacion: (asignada?.r.lejano ?? false) || (visita?.requiereConfirmacion ?? false),
       solicitada: visita?.solicitada ?? false,
@@ -172,7 +174,7 @@ export function armarRuta(
   return {
     paradas: ordenarParadas(todas.filter((p) => p.entregar.length > 0)),
     pasarARetirar: ordenarParadas(todas.filter((p) => p.entregar.length === 0)),
-    sinRecorrido: sinRecorrido.sort(porNombre),
+    sinRecorrido: sinRecorrido.sort(porReciente),
     retiranEnMostrador,
     porEncomienda,
   }

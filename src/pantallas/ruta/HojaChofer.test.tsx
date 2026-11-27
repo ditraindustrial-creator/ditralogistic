@@ -13,7 +13,7 @@ const etapas: Etapa[] = [
   { id: 'a5', area: 'afilado', orden: 5, nombre: 'Entregado', esListo: false, esFinal: true },
 ]
 const trab = (id: string, numero: number, clienteId: string, extra: Partial<Trabajo> = {}): Trabajo => ({
-  id, numero, clienteId, area: 'afilado', entrada: 'cliente', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z', urgente: false, ...extra,
+  id, numero, numeroArea: numero, clienteId, area: 'afilado', entrada: 'cliente', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z', urgente: false, ...extra,
 })
 const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d: string): Movimiento => ({
   id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn: '2026-11-20T12:00:00Z',
@@ -158,7 +158,7 @@ describe('HojaChofer', () => {
     it('cada parada es una tarjeta con lo que hay que entregar', async () => {
       montar({ dosRecorridos: false })
       const c1 = await tarjeta('Imprenta Sur')
-      expect(c1).toHaveTextContent('N.º 11')
+      expect(c1).toHaveTextContent('A-011')
       expect(c1).toHaveTextContent('Todo lo listo: Cuchillo 4, Tijera 1')
       const c2 = await tarjeta('Libros del Norte')
       expect(c2).toHaveTextContent('Sierra 4')
@@ -294,7 +294,7 @@ describe('HojaChofer', () => {
       await userEvent.type(screen.getByLabelText('Producto línea 1'), 'Cuchillo 20 cm')
       await userEvent.type(screen.getByLabelText('Cantidad línea 1'), '6')
       await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
-      expect(await screen.findByText(/Trabajo N\.º \d+ guardado/)).toBeInTheDocument()
+      expect(await screen.findByText(/Trabajo [AE]-\d{3,} guardado/)).toBeInTheDocument()
       expect(crear).toHaveBeenCalledTimes(1)
       expect(crear).toHaveBeenCalledWith(expect.objectContaining({ clienteId: 'c1', entrada: 'ruta_propia' }))
       await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }))

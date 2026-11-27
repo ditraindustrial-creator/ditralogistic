@@ -1,6 +1,27 @@
 import type { Area, Cliente, Etapa, Linea, Modalidad, Movimiento, Trabajo } from './tipos'
 
 export const AREAS: readonly Area[] = ['afilado', 'encuadernacion']
+
+/** Código que ve el usuario: letra del área y su correlativo con tres cifras (A-001, E-012, A-1234). */
+export function codigoTrabajo(t: { area: Area; numeroArea: number }): string {
+  return `${t.area === 'afilado' ? 'A' : 'E'}-${String(t.numeroArea).padStart(3, '0')}`
+}
+
+/**
+ * ¿La búsqueda es el código del trabajo? `q` viene en minúsculas, sin espacios ni guiones. Acepta
+ * «a001», «a1» o solo el número («1», que coincide en las dos áreas).
+ */
+export function coincideCodigo(t: { area: Area; numeroArea: number }, q: string): boolean {
+  const m = /^([ae])?0*(\d+)$/.exec(q)
+  if (!m) return false
+  if (m[1] && m[1] !== (t.area === 'afilado' ? 'a' : 'e')) return false
+  return Number(m[2]) === t.numeroArea
+}
+
+/** Del más reciente al más antiguo (fecha de recepción; a igual fecha, el número interno mayor). */
+export function masRecientePrimero(a: { recibidoEn: string; numero: number }, b: { recibidoEn: string; numero: number }): number {
+  return Date.parse(b.recibidoEn) - Date.parse(a.recibidoEn) || b.numero - a.numero
+}
 export const MODALIDADES: readonly Modalidad[] = ['cliente', 'encomienda', 'ruta_propia']
 /** Mayor cantidad que acepta la base (integer). */
 export const CANTIDAD_MAXIMA = 2147483647
@@ -153,5 +174,5 @@ export function trabajosEnRecepcion(trabajos: Trabajo[], lineas: Linea[], movimi
       if (t) conMovimiento.add(t)
     }
   }
-  return trabajos.filter((t) => !conMovimiento.has(t.id)).sort((a, b) => b.numero - a.numero)
+  return trabajos.filter((t) => !conMovimiento.has(t.id)).sort(masRecientePrimero)
 }

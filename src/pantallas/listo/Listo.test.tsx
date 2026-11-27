@@ -13,7 +13,7 @@ const etapas: Etapa[] = [
   { id: 'b2', area: 'encuadernacion', orden: 2, nombre: 'Listo', esListo: true, esFinal: false },
 ]
 const trab = (id: string, numero: number, clienteId: string, area: Trabajo['area']): Trabajo => ({
-  id, numero, clienteId, area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
+  id, numero, numeroArea: numero, clienteId, area, entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
 })
 const lin = (id: string, trabajoId: string, cantidad: number): Linea => ({ id, trabajoId, producto: 'X', cantidad })
 const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d: string, creadoEn: string): Movimiento => ({

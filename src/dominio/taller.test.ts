@@ -33,11 +33,11 @@ const datos: DatosOperacion = {
   recorridos: [],
   asignaciones: [],
   trabajos: [
-    { id: 't1', numero: 1, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-21T12:00:00Z', urgente: false },
-    { id: 't2', numero: 2, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-22T12:00:00Z', urgente: true },
-    { id: 't3', numero: 3, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-19T12:00:00Z', urgente: false },
-    { id: 't4', numero: 4, clienteId: 'c1', area: 'encuadernacion', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-18T12:00:00Z', urgente: false },
-    { id: 't5', numero: 5, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-17T12:00:00Z', urgente: false },
+    { id: 't1', numero: 1, numeroArea: 1, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-21T12:00:00Z', urgente: false },
+    { id: 't2', numero: 2, numeroArea: 2, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-22T12:00:00Z', urgente: true },
+    { id: 't3', numero: 3, numeroArea: 3, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-19T12:00:00Z', urgente: false },
+    { id: 't4', numero: 4, numeroArea: 4, clienteId: 'c1', area: 'encuadernacion', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-18T12:00:00Z', urgente: false },
+    { id: 't5', numero: 5, numeroArea: 5, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-17T12:00:00Z', urgente: false },
   ],
   lineas: [
     { id: 'l1', trabajoId: 't1', producto: 'Cuchillo', cantidad: 6 },
@@ -56,21 +56,22 @@ const datos: DatosOperacion = {
 }
 
 describe('lineasEnCurso', () => {
-  it('ordena urgentes primero, luego la más antigua; oculta lo totalmente entregado', () => {
+  it('ordena urgentes primero, luego la más reciente; oculta lo totalmente entregado', () => {
     const r = lineasEnCurso(datos, ['afilado'])
-    expect(r.map((l) => l.lineaId)).toEqual(['l2', 'l3', 'l1'])
+    expect(r.map((l) => l.lineaId)).toEqual(['l2', 'l1', 'l3'])
   })
   it('calcula la distribución por etapa en orden y omite etapas vacías', () => {
     const l1 = lineasEnCurso(datos, ['afilado']).find((l) => l.lineaId === 'l1')!
     expect(l1.distribucion.map((d) => [d.etapa.nombre, d.unidades])).toEqual([['En taller', 2], ['Afilado', 4]])
     expect(l1.clienteNombre).toBe('Imprenta Sur')
     expect(l1.numero).toBe(1)
+    expect(l1.codigo).toBe('A-001')
     expect(l1.etapasArea.map((e) => e.id)).toEqual(['a1', 'a2', 'a3', 'a5'])
   })
   it('filtra por áreas permitidas', () => {
     expect(lineasEnCurso(datos, ['encuadernacion']).map((l) => l.lineaId)).toEqual(['l4'])
     expect(lineasEnCurso(datos, [])).toEqual([])
-    expect(lineasEnCurso(datos, ['afilado', 'encuadernacion']).map((l) => l.lineaId)).toEqual(['l2', 'l4', 'l3', 'l1'])
+    expect(lineasEnCurso(datos, ['afilado', 'encuadernacion']).map((l) => l.lineaId)).toEqual(['l2', 'l1', 'l3', 'l4'])
   })
 })
 

@@ -39,7 +39,7 @@ function fila(clienteId: string, listas: number, salida: Modalidad = 'ruta_propi
   numero++
   const c = clientes.find((x) => x.id === clienteId)
   return {
-    trabajoId: `t${numero}`, numero, clienteId, clienteNombre: c?.nombre ?? 'Cliente desconocido', area: 'afilado', salida,
+    trabajoId: `t${numero}`, numero, codigo: `A-${numero}`, recibidoEn: '2026-11-20T12:00:00Z', clienteId, clienteNombre: c?.nombre ?? 'Cliente desconocido', area: 'afilado', salida,
     listas, total: 10, entregadas: 0, pendientes: 10, listoDesde: listas > 0 ? '2026-11-23T12:00:00Z' : null,
     rutas: [], proximaRuta: null, ...extra,
   }
@@ -171,7 +171,7 @@ describe('armarRuta: un martes', () => {
     expect(r.paradas.find((p) => p.clienteId === 'c1')?.entregar).toEqual([f1])
     expect(r.paradas.find((p) => p.clienteId === 'c3')?.entregar).toEqual([f3])
     expect(r.retiranEnMostrador).toEqual([retira])
-    expect(r.porEncomienda).toEqual([encomienda, encomiendaSinRuta])
+    expect(r.porEncomienda).toEqual([encomiendaSinRuta, encomienda]) // lo más nuevo arriba
     expect(r.sinRecorrido).toEqual([f6])
   })
 
@@ -182,11 +182,11 @@ describe('armarRuta: un martes', () => {
     expect(r.pasarARetirar.find((p) => p.clienteId === 'c4')?.entregar).toEqual([])
   })
 
-  it('varios trabajos listos del mismo cliente van en la misma parada, por número', () => {
+  it('varios trabajos listos del mismo cliente van en la misma parada, lo más nuevo arriba', () => {
     const otra = fila('c1', 1)
     const { paradas } = armarRuta(MARTES, [otra, f1], clientes, recorridos, asignaciones, [])
     expect(paradas).toHaveLength(1)
-    expect(paradas[0].entregar).toEqual([f1, otra].sort((a, b) => a.numero - b.numero))
+    expect(paradas[0].entregar).toEqual([otra, f1])
   })
 })
 
@@ -255,7 +255,7 @@ describe('armarRuta: un cliente en varios recorridos (Task 10)', () => {
   const fx = (clienteId: string, listas: number, salida: Modalidad = 'ruta_propia'): FilaListo => {
     numero++
     return {
-      trabajoId: `x${numero}`, numero, clienteId, clienteNombre: gente.find((c) => c.id === clienteId)?.nombre ?? '?', area: 'afilado', salida,
+      trabajoId: `x${numero}`, numero, codigo: `A-${numero}`, recibidoEn: '2026-11-20T12:00:00Z', clienteId, clienteNombre: gente.find((c) => c.id === clienteId)?.nombre ?? '?', area: 'afilado', salida,
       listas, total: 10, entregadas: 0, pendientes: 10, listoDesde: listas > 0 ? '2026-11-23T12:00:00Z' : null, rutas: [], proximaRuta: null,
     }
   }

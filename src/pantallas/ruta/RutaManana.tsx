@@ -102,7 +102,7 @@ export default function RutaManana({ repo, usuario }: { repo: Repo; usuario: Usu
         ) : (
           <ul className="flex flex-col gap-1">
             {p.entregar.map((f) => (
-              <li key={f.trabajoId}>N.º {f.numero} · {datos ? textoProductos(datos, f.trabajoId) : ''}</li>
+              <li key={f.trabajoId}>{f.codigo} · {datos ? textoProductos(datos, f.trabajoId) : ''}</li>
             ))}
           </ul>
         )}
@@ -275,7 +275,7 @@ function FilasSueltas({
           <li key={f.trabajoId} className={`flex flex-col gap-2 rounded border-l-8 p-3 shadow-sm print:shadow-none ${COLOR_AREA[f.area].borde} ${COLOR_AREA[f.area].fondo}`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-lg font-semibold">{f.clienteNombre}</span>
-              <span className="text-sm text-slate-700">N.º {f.numero} · <span className={COLOR_AREA[f.area].etiqueta}>{AREAS[f.area]}</span></span>
+              <span className="text-sm text-slate-700">{f.codigo} · <span className={COLOR_AREA[f.area].etiqueta}>{AREAS[f.area]}</span></span>
             </div>
             <p>{datos ? textoProductos(datos, f.trabajoId) : `${f.listas} listas`}</p>
             {transporteDe?.(f) && <p className="text-slate-700">Transporte: {transporteDe(f)}</p>}
@@ -283,7 +283,7 @@ function FilasSueltas({
               <label className="flex flex-1 flex-col gap-1 text-sm text-slate-700">
                 Salida
                 <select
-                  aria-label={`Salida del trabajo N.º ${f.numero}`}
+                  aria-label={`Salida del trabajo ${f.codigo}`}
                   className={campo}
                   value={f.salida}
                   disabled={ocupado(f)}

@@ -13,14 +13,14 @@ const etapas: Etapa[] = [
   { id: 'a5', area: 'afilado', orden: 5, nombre: 'Entregado', esListo: false, esFinal: true },
 ]
 const trab = (id: string, numero: number): Trabajo => ({
-  id, numero, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
+  id, numero, numeroArea: numero, clienteId: 'c1', area: 'afilado', entrada: 'cliente', salida: 'ruta_propia', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
 })
 const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d: string): Movimiento => ({
   id, lineaId, cantidad, etapaOrigenId: o, etapaDestinoId: d, usuarioId: 'u', creadoEn: '2026-11-20T12:00:00Z',
 })
 const lineas: LineaEntregable[] = [
-  { lineaId: 'l1', trabajoId: 't1', numero: 11, producto: 'Cuchillo', listas: 4 },
-  { lineaId: 'l2', trabajoId: 't1', numero: 11, producto: 'Tijera', listas: 2 },
+  { lineaId: 'l1', trabajoId: 't1', numero: 11, codigo: 'A-011', producto: 'Cuchillo', listas: 4 },
+  { lineaId: 'l2', trabajoId: 't1', numero: 11, codigo: 'A-011', producto: 'Tijera', listas: 2 },
 ]
 
 function montar(envolver?: (r: Repo) => Repo, props: Partial<Parameters<typeof Entrega>[0]> = {}) {
@@ -71,7 +71,7 @@ describe('Entrega', () => {
     expect(screen.getByLabelText('Cantidad Cuchillo')).toHaveValue('4')
     expect(screen.getByLabelText('Cantidad Tijera')).toHaveValue('2')
     expect(screen.getByLabelText('Incluir Cuchillo')).toBeChecked()
-    expect(screen.getByText('Trabajo N.º 11')).toBeInTheDocument()
+    expect(screen.getByText('Trabajo A-011')).toBeInTheDocument()
   })
 
   it('entrega 3 de 4 con el documento 4521: una llamada, mensaje en español y el resto queda pendiente', async () => {

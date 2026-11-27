@@ -16,8 +16,8 @@ const base = { entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-27T12
 
 function datos() {
   const trabajos: Trabajo[] = [
-    { id: 't1', numero: 1, clienteId: 'c1', area: 'afilado', ...base, notas: 'frágil' },
-    { id: 't2', numero: 2, clienteId: 'c1', area: 'afilado', ...base },
+    { id: 't1', numero: 1, numeroArea: 1, clienteId: 'c1', area: 'afilado', ...base, notas: 'frágil' },
+    { id: 't2', numero: 2, numeroArea: 2, clienteId: 'c1', area: 'afilado', ...base },
   ]
   const lineas: Linea[] = [
     { id: 'l1', trabajoId: 't1', producto: 'Cuchillo', cantidad: 10, nota: '20 cm' },
@@ -71,10 +71,10 @@ describe('Recepción: editar recibidos', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Editar recibidos' }))
     const lista = await screen.findByRole('list', { name: 'Trabajos en Recepción' })
     expect(within(lista).getAllByRole('listitem')).toHaveLength(1)
-    expect(within(lista).getByText(/N\.º 1/)).toBeInTheDocument()
+    expect(within(lista).getByText(/A-001/)).toBeInTheDocument()
 
-    await userEvent.click(within(lista).getByRole('button', { name: 'Editar trabajo 1' }))
-    expect(await screen.findByText('Editando trabajo N.º 1')).toBeInTheDocument()
+    await userEvent.click(within(lista).getByRole('button', { name: 'Editar trabajo A-001' }))
+    expect(await screen.findByText('Editando trabajo A-001')).toBeInTheDocument()
     expect(screen.getByLabelText('Producto línea 1')).toHaveValue('Cuchillo')
     expect(screen.getByLabelText('Detalle línea 1')).toHaveValue('20 cm')
     expect(screen.getByLabelText('Notas (opcional)')).toHaveValue('frágil')
@@ -92,7 +92,7 @@ describe('Recepción: editar recibidos', () => {
     await userEvent.type(screen.getByLabelText('Cantidad línea 2'), '1')
     await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
-    expect(await screen.findByText('Trabajo N.º 1 actualizado')).toBeInTheDocument()
+    expect(await screen.findByText('Trabajo A-001 actualizado')).toBeInTheDocument()
     const todo = await repo.cargarTodo()
     expect(todo.trabajos.find((t) => t.id === 't1')?.clienteId).toBe('c2')
     const suyas = todo.lineas.filter((l) => l.trabajoId === 't1')
@@ -111,7 +111,7 @@ describe('Recepción: editar recibidos', () => {
   it('si una pieza pasó al taller mientras se editaba, muestra el aviso y no cambia nada', async () => {
     const { repo } = montar()
     await userEvent.click(screen.getByRole('tab', { name: 'Editar recibidos' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Editar trabajo 1' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Editar trabajo A-001' }))
     await repo.moverUnidades('l1', 1, 'a1', 'a2')
     await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('ya tiene piezas en el taller')

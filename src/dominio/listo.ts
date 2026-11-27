@@ -1,6 +1,7 @@
 import type { Area, Asignacion, Cliente, EntregaParcial, Etapa, Linea, Modalidad, Movimiento, Recorrido, Trabajo } from './tipos'
 import { diaSemana } from './fechas'
 import { planesPorTrabajo, type PlanTrabajo } from './planificacion'
+import { codigoTrabajo } from './trabajo'
 
 /** Todo lo que hace falta para calcular el estado de la operación (entrada de `resumenListo`). */
 export interface DatosOperacion {
@@ -32,6 +33,10 @@ export interface ProximaRuta extends RutaCliente {
 export interface FilaListo {
   trabajoId: string
   numero: number
+  /** Código que ve el usuario (A-001, E-001). */
+  codigo: string
+  /** Cuándo se recibió el trabajo (ISO): ordena lo más nuevo arriba. */
+  recibidoEn: string
   clienteId: string
   clienteNombre: string
   area: Area
@@ -127,6 +132,8 @@ export function resumenListo(datos: DatosOperacion, hoy: string): FilaListo[] {
     filas.push({
       trabajoId: t.id,
       numero: t.numero,
+      codigo: codigoTrabajo(t),
+      recibidoEn: t.recibidoEn,
       clienteId: t.clienteId,
       clienteNombre: cliente?.nombre ?? 'Cliente desconocido',
       area: t.area,

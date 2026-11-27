@@ -97,7 +97,7 @@ describe('memoryRepo.suscribirCambios', () => {
         { id: 'a1', area: 'afilado', orden: 1, nombre: 'R', esListo: false, esFinal: false },
         { id: 'a2', area: 'afilado', orden: 2, nombre: 'L', esListo: true, esFinal: false },
       ],
-      trabajos: [{ id: 't1', numero: 1, clienteId: 'c', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false }],
+      trabajos: [{ id: 't1', numero: 1, numeroArea: 1, clienteId: 'c', area: 'afilado', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false }],
       lineas: [{ id: 'l1', trabajoId: 't1', producto: 'X', cantidad: 3 }],
       movimientos: [{ id: 'm0', lineaId: 'l1', cantidad: 3, etapaOrigenId: null, etapaDestinoId: 'a1', usuarioId: 'u', creadoEn: '2026-11-20T12:00:00Z' }],
     })

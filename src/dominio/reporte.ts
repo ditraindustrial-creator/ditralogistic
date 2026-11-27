@@ -1,11 +1,14 @@
 import { diaLocal, diaSemana } from './fechas'
 import type { DatosOperacion } from './listo'
 import type { Etapa, Movimiento } from './tipos'
+import { codigoTrabajo } from './trabajo'
 
 export interface FilaReporte {
   clienteNombre: string
   trabajoId: string
   trabajoNumero: number
+  /** Código que ve el usuario (A-001, E-001). */
+  trabajoCodigo: string
   producto: string
   /** Detalle anotado en recepción. */
   nota?: string
@@ -127,6 +130,7 @@ export function reporteDiario(fecha: string, datos: DatosOperacion): ReporteDiar
       clienteNombre: clientePorId.get(trabajo.clienteId)?.nombre ?? 'Cliente desconocido',
       trabajoId: trabajo.id,
       trabajoNumero: trabajo.numero,
+      trabajoCodigo: codigoTrabajo(trabajo),
       producto: linea.producto,
       ...(linea.nota ? { nota: linea.nota } : {}),
       cantidad,
@@ -149,7 +153,7 @@ export function reporteDiario(fecha: string, datos: DatosOperacion): ReporteDiar
   }
 
   const orden = (a: FilaReporte, b: FilaReporte) =>
-    Number(b.urgente) - Number(a.urgente) || Date.parse(a.desde) - Date.parse(b.desde) || a.trabajoNumero - b.trabajoNumero
+    Number(b.urgente) - Number(a.urgente) || Date.parse(b.desde) - Date.parse(a.desde) || b.trabajoNumero - a.trabajoNumero
   for (const lista of [r.listo, r.enProduccion, r.porEntregar, r.recibido]) lista.sort(orden)
   return r
 }

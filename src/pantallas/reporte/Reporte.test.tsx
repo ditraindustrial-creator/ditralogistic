@@ -11,7 +11,7 @@ const etapas: Etapa[] = [
   { id: 'e3', area: 'encuadernacion', orden: 3, nombre: 'Terminado', esListo: true, esFinal: false },
 ]
 const trab = (id: string, numero: number): Trabajo => ({
-  id, numero, clienteId: 'c1', area: 'encuadernacion', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
+  id, numero, numeroArea: numero, clienteId: 'c1', area: 'encuadernacion', entrada: 'cliente', salida: 'cliente', recibidoEn: '2026-11-20T12:00:00Z', urgente: false,
 })
 const lin = (id: string, trabajoId: string, cantidad: number, producto: string): Linea => ({ id, trabajoId, producto, cantidad })
 const mov = (id: string, lineaId: string, cantidad: number, o: string | null, d: string, creadoEn: string): Movimiento => ({
