@@ -1,6 +1,6 @@
 import type { Asignacion, Cliente, Modalidad, Movimiento, Producto, Recorrido, Trabajo, UsuarioActual, Visita } from '../dominio/tipos'
 import type { Entrega, OpcionesEntrega } from '../dominio/entrega'
-import type { DatosTrabajoNuevo } from '../dominio/trabajo'
+import type { DatosEdicionTrabajo, DatosTrabajoNuevo } from '../dominio/trabajo'
 import type { DatosOperacion } from '../dominio/listo'
 import type { ClienteImportado, ProductoImportado } from '../dominio/csv'
 import type { ClienteNuevo } from '../dominio/maestros'
@@ -33,6 +33,13 @@ export interface Repo {
    * (se perdió la respuesta y se reintenta), devuelve ese trabajo sin crear otro.
    */
   crearTrabajo(datos: DatosTrabajoNuevo, clave?: string): Promise<Trabajo>
+  /**
+   * Edita, todo o nada, un trabajo cuyas piezas siguen todas en Recepción (ninguna pasó al taller):
+   * cambia cliente, urgente, guía de retiro, notas y líneas (agrega, quita, cambia producto, cantidad y
+   * detalle; la recepción inicial de cada línea se ajusta a la nueva cantidad). El área no cambia.
+   * Solo gestión. Lanza ErrorTrabajo (en español) si no se puede, p. ej. TRABAJO_YA_EN_TALLER.
+   */
+  editarTrabajo(trabajoId: string, datos: DatosEdicionTrabajo): Promise<Trabajo>
 
   listarClientes(): Promise<Cliente[]>
   /**

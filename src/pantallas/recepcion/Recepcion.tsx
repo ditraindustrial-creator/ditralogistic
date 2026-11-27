@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import type { Repo } from '../../data/repo'
 import { nuevaClave } from '../../dominio/clave'
 import { puedeCrearClientes } from '../../dominio/permisos'
-import type { Area, Cliente, Modalidad, Producto, Trabajo, UsuarioActual } from '../../dominio/tipos'
+import type { Area, Cliente, Linea, Modalidad, Producto, Trabajo, UsuarioActual } from '../../dominio/tipos'
 import {
   ErrorTrabajo,
   filtrarClientes,
   parsearCantidad,
+  validarEdicionTrabajo,
   validarTrabajoNuevo,
+  type DatosEdicionTrabajo,
   type DatosTrabajoNuevo,
 } from '../../dominio/trabajo'
 import ClienteNuevo from './ClienteNuevo'
@@ -31,6 +33,8 @@ const botonClaro = 'min-h-12 rounded border px-4 py-3 text-lg'
 
 interface LineaForm {
   clave: number
+  /** Línea ya guardada (al editar un trabajo); sin id es una línea nueva. */
+  id?: string
   producto: string
   cantidad: string
   /** Detalle de lo que es (se guarda en la nota de la línea), p. ej. «COMPOSICION SEK, Ø14 blanco». */
@@ -72,8 +76,15 @@ function Opciones<T extends string>({
   )
 }
 
+/** Trabajo que se edita mientras sigue en Recepción, con sus líneas y su cliente. */
+export interface EdicionTrabajo {
+  trabajo: Trabajo
+  lineas: Linea[]
+  cliente?: Cliente
+}
+
 export default function Recepcion({
-  repo, usuario, clienteInicial, onCreado,
+  repo, usuario, clienteInicial, onCreado, edicion, onEditado, alCancelar,
 }: {
   repo: Repo
   usuario: UsuarioActual
@@ -81,6 +92,12 @@ export default function Recepcion({
   clienteInicial?: Cliente
   /** Se llama una vez guardado el trabajo. */
   onCreado?: (trabajo: Trabajo) => void
+  /** Con esto el formulario edita ese trabajo en vez de recibir uno nuevo (solo gestión). */
+  edicion?: EdicionTrabajo
+  /** Se llama al terminar de editar («Volver a la lista»). */
+  onEditado?: (trabajo: Trabajo) => void
+  /** Al editar: vuelve a la lista sin guardar. */
+  alCancelar?: () => void
 }) {
   const modalidadInicial: Modalidad = usuario.rol === 'chofer' || clienteInicial ? 'ruta_propia' : 'cliente'
   const siguienteClave = useRef(2)
@@ -96,14 +113,19 @@ export default function Recepcion({
   const [productos, setProductos] = useState<Producto[]>([])
   const [errorCarga, setErrorCarga] = useState('')
 
-  const [cliente, setCliente] = useState<Cliente | null>(clienteInicial ?? null)
+  const t = edicion?.trabajo
+  const [cliente, setCliente] = useState<Cliente | null>(edicion ? (edicion.cliente ?? null) : (clienteInicial ?? null))
   const [busqueda, setBusqueda] = useState('')
-  const [area, setArea] = useState<Area>('afilado')
-  const [entrada, setEntrada] = useState<Modalidad>(modalidadInicial)
-  const [lineas, setLineas] = useState<LineaForm[]>([{ clave: 1, producto: '', cantidad: '', detalle: '' }])
-  const [urgente, setUrgente] = useState(false)
-  const [guia, setGuia] = useState('')
-  const [notas, setNotas] = useState('')
+  const [area, setArea] = useState<Area>(t?.area ?? 'afilado')
+  const [entrada, setEntrada] = useState<Modalidad>(t?.entrada ?? modalidadInicial)
+  const [lineas, setLineas] = useState<LineaForm[]>(() =>
+    edicion && edicion.lineas.length > 0
+      ? edicion.lineas.map((l) => ({ clave: siguienteClave.current++, id: l.id, producto: l.producto, cantidad: String(l.cantidad), detalle: l.nota ?? '' }))
+      : [{ clave: 1, producto: '', cantidad: '', detalle: '' }],
+  )
+  const [urgente, setUrgente] = useState(t?.urgente ?? false)
+  const [guia, setGuia] = useState(t?.guiaRetiro ?? '')
+  const [notas, setNotas] = useState(t?.notas ?? '')
 
   const [errores, setErrores] = useState<string[]>([])
   const [guardando, setGuardando] = useState(false)
@@ -144,8 +166,38 @@ export default function Recepcion({
     setGuardado(null)
   }
 
+  async function guardarEdicion(trabajo: Trabajo) {
+    const datos: DatosEdicionTrabajo = {
+      clienteId: cliente?.id ?? '',
+      urgente,
+      guiaRetiro: guia.trim() || undefined,
+      notas: notas.trim() || undefined,
+      lineas: lineas.map((l) => {
+        const detalle = l.detalle.trim()
+        return { ...(l.id ? { id: l.id } : {}), producto: l.producto, cantidad: parsearCantidad(l.cantidad), ...(detalle ? { nota: detalle } : {}) }
+      }),
+    }
+    const invalidos = validarEdicionTrabajo(datos)
+    if (invalidos.length > 0) {
+      setErrores(invalidos)
+      return
+    }
+    setErrores([])
+    enCurso.current = true
+    setGuardando(true)
+    try {
+      setGuardado(await repo.editarTrabajo(trabajo.id, datos))
+    } catch (e) {
+      setErrores([e instanceof ErrorTrabajo ? e.message : ERROR_GENERICO])
+    } finally {
+      enCurso.current = false
+      setGuardando(false)
+    }
+  }
+
   async function guardar() {
     if (enCurso.current) return
+    if (edicion) return guardarEdicion(edicion.trabajo)
     const datos: DatosTrabajoNuevo = {
       clienteId: cliente?.id ?? '',
       area,
@@ -179,6 +231,16 @@ export default function Recepcion({
     }
   }
 
+  if (guardado && edicion) {
+    return (
+      <div className="flex flex-col gap-4" role="status">
+        <p className="text-2xl font-bold text-teal-800">Trabajo N.º {guardado.numero} actualizado</p>
+        <p className="text-lg">{cliente?.nombre}</p>
+        <button type="button" className={botonGrande} onClick={() => onEditado?.(guardado)}>Volver a la lista</button>
+      </div>
+    )
+  }
+
   if (guardado) {
     return (
       <div className="flex flex-col gap-4" role="status">
@@ -198,6 +260,12 @@ export default function Recepcion({
 
   return (
     <div className="flex flex-col gap-5">
+      {edicion && (
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xl font-bold">Editando trabajo N.º {edicion.trabajo.numero}</h2>
+          <button type="button" className={botonClaro} onClick={alCancelar}>Cancelar</button>
+        </div>
+      )}
       {errorCarga && <p role="alert" className="text-red-700">{errorCarga}</p>}
 
       {cliente ? (
@@ -276,8 +344,18 @@ export default function Recepcion({
           void guardar()
         }}
       >
-        <Opciones nombre="area" titulo="Área" opciones={AREAS} valor={area} alCambiar={setArea} colorElegido={(a) => COLOR_AREA[a].elegido} />
-        <Opciones nombre="entrada" titulo="¿Cómo llegó?" opciones={MODALIDADES} valor={entrada} alCambiar={setEntrada} />
+        {edicion ? (
+          // El área no cambia al editar: las líneas ya están recibidas en la primera etapa de su área.
+          <p className="text-lg">
+            <span className="font-semibold">Área: </span>
+            {AREAS.find((a) => a.id === area)?.titulo}
+          </p>
+        ) : (
+          <>
+            <Opciones nombre="area" titulo="Área" opciones={AREAS} valor={area} alCambiar={setArea} colorElegido={(a) => COLOR_AREA[a].elegido} />
+            <Opciones nombre="entrada" titulo="¿Cómo llegó?" opciones={MODALIDADES} valor={entrada} alCambiar={setEntrada} />
+          </>
+        )}
 
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-1 text-lg font-semibold">Líneas</legend>
@@ -360,7 +438,7 @@ export default function Recepcion({
         )}
 
         <button type="submit" className={botonGrande} disabled={guardando}>
-          {guardando ? 'Guardando…' : 'Guardar trabajo'}
+          {guardando ? 'Guardando…' : edicion ? 'Guardar cambios' : 'Guardar trabajo'}
         </button>
       </form>
     </div>

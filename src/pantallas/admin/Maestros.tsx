@@ -6,6 +6,7 @@ import { esGestion } from '../../dominio/permisos'
 import { Importador, mensaje, resumen, resumenAsignaciones, sinAcentos } from './Importador'
 import AsignacionesCliente from './AsignacionesCliente'
 import PestanaRecorridos from './PestanaRecorridos'
+import ProductoNuevo from './ProductoNuevo'
 
 const MAX_FILAS_VISIBLES = 50
 
@@ -119,53 +120,70 @@ const AREAS: { valor: Area; texto: string }[] = [
 function PestanaProductos({ repo, productos, recargar }: { repo: Repo; productos: Producto[]; recargar: () => Promise<void> }) {
   const [areaPorDefecto, setAreaPorDefecto] = useState<Area | ''>('')
   const [busqueda, setBusqueda] = useState('')
+  const [creando, setCreando] = useState(false)
   const q = sinAcentos(busqueda.trim())
   const coincidencias = productos.filter((p) => q === '' || sinAcentos(p.nombre).includes(q) || sinAcentos(p.codigo).includes(q))
 
   return (
     <div className="flex flex-col gap-4">
-      <Importador
-        etiquetaArchivo="Archivo de productos (CSV)"
-        textoBoton="Importar productos"
-        campos={[
-          { clave: 'codigo', etiqueta: 'Columna del código', obligatorio: true, pistas: ['codigo', 'cod'] },
-          { clave: 'nombre', etiqueta: 'Columna del nombre', obligatorio: true, pistas: ['nombre', 'descripcion', 'producto'] },
-          { clave: 'area', etiqueta: 'Columna del área (opcional)', obligatorio: false, pistas: ['area'] },
-          { clave: 'tipo', etiqueta: 'Columna del tipo: herramienta o servicio (opcional; vacío = herramienta)', obligatorio: false, pistas: ['tipo'] },
-        ]}
-        extra={
-          <label className="flex flex-col gap-1">
-            Área de todos los productos
-            <select className={campo} value={areaPorDefecto} onChange={(e) => setAreaPorDefecto(e.target.value as Area | '')}>
-              <option value="">— usar la columna del área —</option>
-              {AREAS.map((a) => (
-                <option key={a.valor} value={a.valor}>
-                  {a.texto}
-                </option>
-              ))}
-            </select>
-          </label>
-        }
-        ejecutar={async (filas, m) => {
-          const { productos: buenos, errores } = importarProductos(filas, {
-            codigo: m.codigo,
-            nombre: m.nombre,
-            // El área fija elegida manda sobre la columna.
-            area: areaPorDefecto ? undefined : m.area || undefined,
-            areaPorDefecto: areaPorDefecto || undefined,
-            tipo: m.tipo || undefined,
-          })
-          const r = buenos.length > 0 ? await repo.guardarProductos(buenos) : { creados: 0, actualizados: 0, sinCambios: 0 }
-          await recargar()
-          return { resumen: resumen(r, 'producto', 'productos'), errores }
-        }}
-      />
+      {creando ? (
+        <ProductoNuevo repo={repo} productos={productos} alGuardar={recargar} alCerrar={() => setCreando(false)} />
+      ) : (
+        <button
+          type="button"
+          className="min-h-14 rounded bg-teal-700 px-5 py-3 text-xl font-semibold text-white"
+          onClick={() => setCreando(true)}
+        >
+          + Nuevo producto
+        </button>
+      )}
+      <details className="rounded border p-3">
+        <summary className="min-h-12 cursor-pointer py-2 text-lg font-semibold">Importar varios productos desde un archivo (CSV)</summary>
+        <div className="mt-3">
+          <Importador
+            etiquetaArchivo="Archivo de productos (CSV)"
+            textoBoton="Importar productos"
+            campos={[
+              { clave: 'codigo', etiqueta: 'Columna del código', obligatorio: true, pistas: ['codigo', 'cod'] },
+              { clave: 'nombre', etiqueta: 'Columna del nombre', obligatorio: true, pistas: ['nombre', 'descripcion', 'producto'] },
+              { clave: 'area', etiqueta: 'Columna del área (opcional)', obligatorio: false, pistas: ['area'] },
+              { clave: 'tipo', etiqueta: 'Columna del tipo: herramienta o servicio (opcional; vacío = herramienta)', obligatorio: false, pistas: ['tipo'] },
+            ]}
+            extra={
+              <label className="flex flex-col gap-1">
+                Área de todos los productos
+                <select className={campo} value={areaPorDefecto} onChange={(e) => setAreaPorDefecto(e.target.value as Area | '')}>
+                  <option value="">— usar la columna del área —</option>
+                  {AREAS.map((a) => (
+                    <option key={a.valor} value={a.valor}>
+                      {a.texto}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            }
+            ejecutar={async (filas, m) => {
+              const { productos: buenos, errores } = importarProductos(filas, {
+                codigo: m.codigo,
+                nombre: m.nombre,
+                // El área fija elegida manda sobre la columna.
+                area: areaPorDefecto ? undefined : m.area || undefined,
+                areaPorDefecto: areaPorDefecto || undefined,
+                tipo: m.tipo || undefined,
+              })
+              const r = buenos.length > 0 ? await repo.guardarProductos(buenos) : { creados: 0, actualizados: 0, sinCambios: 0 }
+              await recargar()
+              return { resumen: resumen(r, 'producto', 'productos'), errores }
+            }}
+          />
+        </div>
+      </details>
       <label className="flex flex-col gap-1">
         Buscar producto
         <input className={campo} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Código o nombre" />
       </label>
       {productos.length === 0 ? (
-        <p className="text-slate-600">Aún no hay productos en el catálogo.</p>
+        <p className="text-slate-600">Aún no hay productos en el catálogo. Agrega uno con «+ Nuevo producto».</p>
       ) : (
         <>
           <p className="text-slate-600">

@@ -1,4 +1,4 @@
-import type { Area, Cliente, Etapa, Modalidad } from './tipos'
+import type { Area, Cliente, Etapa, Linea, Modalidad, Movimiento, Trabajo } from './tipos'
 
 export const AREAS: readonly Area[] = ['afilado', 'encuadernacion']
 export const MODALIDADES: readonly Modalidad[] = ['cliente', 'encomienda', 'ruta_propia']
@@ -94,4 +94,64 @@ export function filtrarClientes(clientes: Cliente[], texto: string, limite = 8):
     ;(nombre.startsWith(q) || (porRut && rut.startsWith(qRut)) ? primeros : otros).push(c)
   }
   return [...primeros, ...otros].slice(0, limite)
+}
+
+// ---- Edición de un trabajo mientras sigue en Recepción ----
+
+/** Una línea al editar: con `id` es una línea que ya existe; sin `id`, una línea nueva. */
+export interface LineaEditada extends LineaNueva {
+  id?: string
+}
+
+/** Lo que se puede cambiar de un trabajo mientras ninguna pieza pasó al taller. El área no cambia. */
+export interface DatosEdicionTrabajo {
+  clienteId: string
+  urgente?: boolean
+  guiaRetiro?: string
+  notas?: string
+  lineas: LineaEditada[]
+}
+
+/** Mensaje cuando alguna pieza del trabajo ya salió de Recepción. Igual que en la base (0011). */
+export const TRABAJO_YA_EN_TALLER = 'Este trabajo ya tiene piezas en el taller: ya no se puede editar desde Recepción.'
+
+/** Errores (en español) de una edición; vacía si se puede guardar. Mismas reglas que un trabajo nuevo. */
+export function validarEdicionTrabajo(datos: DatosEdicionTrabajo): string[] {
+  const errores: string[] = []
+  if (!datos.clienteId) errores.push('Elige el cliente.')
+  if (datos.lineas.length === 0) errores.push('Agrega al menos una línea.')
+  const ids = new Set<string>()
+  datos.lineas.forEach((l, i) => {
+    if (l.producto.trim() === '') errores.push(`La línea ${i + 1} necesita un producto.`)
+    if (!cantidadValida(l.cantidad)) {
+      errores.push(`La cantidad de la línea ${i + 1} debe ser un número entero mayor que cero.`)
+    }
+    if (l.id !== undefined) {
+      if (ids.has(l.id)) errores.push(`La línea ${i + 1} está repetida.`)
+      ids.add(l.id)
+    }
+  })
+  return errores
+}
+
+/**
+ * ¿Sigue el trabajo entero en Recepción? Sí cuando todos los movimientos de sus líneas son la
+ * recepción inicial (sin etapa de origen): ninguna pieza se movió al taller ni se entregó.
+ */
+export function sigueEnRecepcion(trabajoId: string, lineas: Linea[], movimientos: Movimiento[]): boolean {
+  const ids = new Set(lineas.filter((l) => l.trabajoId === trabajoId).map((l) => l.id))
+  return movimientos.every((m) => !ids.has(m.lineaId) || m.etapaOrigenId === null)
+}
+
+/** Trabajos que todavía se pueden editar desde Recepción, del más reciente al más antiguo. */
+export function trabajosEnRecepcion(trabajos: Trabajo[], lineas: Linea[], movimientos: Movimiento[]): Trabajo[] {
+  const conMovimiento = new Set<string>()
+  const lineaATrabajo = new Map(lineas.map((l) => [l.id, l.trabajoId]))
+  for (const m of movimientos) {
+    if (m.etapaOrigenId !== null) {
+      const t = lineaATrabajo.get(m.lineaId)
+      if (t) conMovimiento.add(t)
+    }
+  }
+  return trabajos.filter((t) => !conMovimiento.has(t.id)).sort((a, b) => b.numero - a.numero)
 }

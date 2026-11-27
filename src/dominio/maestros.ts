@@ -148,3 +148,18 @@ export function nombreRecorrido(nombre: string, dia: number, chofer?: string): s
 export function siguienteOrden(asignaciones: Asignacion[], recorridoId: string): number {
   return asignaciones.filter((a) => a.recorridoId === recorridoId).reduce((m, a) => Math.max(m, a.orden), 0) + 1
 }
+
+// ---- Producto nuevo (Administración → Productos) ----
+
+/** Errores (en español) del formulario «Nuevo producto»; vacía si se puede guardar. El código no se repite. */
+export function validarProductoNuevo(p: ProductoImportado, existentes: Producto[]): string[] {
+  const errores: string[] = []
+  const codigo = p.codigo.trim()
+  if (codigo === '') errores.push('Escribe el código del producto.')
+  if (p.nombre.trim() === '') errores.push('Escribe el nombre del producto.')
+  if (p.area !== 'afilado' && p.area !== 'encuadernacion') errores.push('Elige el área (afilado o encuadernación).')
+  if (p.tipo !== 'herramienta' && p.tipo !== 'servicio') errores.push('Elige si es herramienta o servicio.')
+  const repetido = codigo === '' ? undefined : existentes.find((e) => e.codigo === codigo)
+  if (repetido) errores.push(`Ya existe un producto con el código ${codigo}: «${repetido.nombre}».`)
+  return errores
+}

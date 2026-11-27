@@ -43,3 +43,8 @@ export function puedeDetallar(rol: Rol, area: Area): boolean {
 export function puedePlanificar(rol: Rol): boolean {
   return esGestion(rol) || rol === 'operario_encuadernacion'
 }
+
+/** Quién edita un trabajo mientras sigue en Recepción (como editar_trabajo en la base): solo gestión. */
+export function puedeEditarRecepcion(rol: Rol): boolean {
+  return esGestion(rol)
+}

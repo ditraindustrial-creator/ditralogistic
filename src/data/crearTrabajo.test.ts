@@ -175,3 +175,40 @@ describe('supabaseRepo.crearTrabajo', () => {
     expect(errorDeTrabajo({ code: '42501', message: 'Debes iniciar sesión para recibir trabajos.' }).message).toBe('Debes iniciar sesión para recibir trabajos.')
   })
 })
+
+describe('supabaseRepo.editarTrabajo', () => {
+  const fila = {
+    id: 't-1', numero: 41, cliente_id: 'c2', area: 'afilado', entrada: 'cliente', salida: 'cliente',
+    recibido_en: '2026-11-24T10:00:00Z', guia_retiro: null, guia_despacho: null, factura: null, transporte: null,
+    urgente: false, notas: null,
+  }
+  function falso(respuesta: { data: unknown; error: { code?: string; message: string } | null }) {
+    const llamadas: { fn: string; args: unknown }[] = []
+    const sb = { rpc: (fn: string, args: unknown) => { llamadas.push({ fn, args }); return Promise.resolve(respuesta) } }
+    return { repo: crearRepoConCliente(sb as unknown as SupabaseClient), llamadas }
+  }
+
+  it('hace UNA llamada rpc editar_trabajo con las líneas (con y sin id)', async () => {
+    const { repo, llamadas } = falso({ data: fila, error: null })
+    const t = await repo.editarTrabajo('t-1', {
+      clienteId: 'c2', urgente: false,
+      lineas: [{ id: 'l1', producto: 'Cuchillo', cantidad: 8, nota: 'Ø14' }, { producto: 'Hacha', cantidad: 1 }],
+    })
+    expect(t).toMatchObject({ id: 't-1', clienteId: 'c2' })
+    expect(llamadas).toEqual([{
+      fn: 'editar_trabajo',
+      args: {
+        p_trabajo: 't-1',
+        p_datos: {
+          cliente_id: 'c2', urgente: false, guia_retiro: undefined, notas: undefined,
+          lineas: [{ id: 'l1', producto: 'Cuchillo', cantidad: 8, nota: 'Ø14' }, { id: undefined, producto: 'Hacha', cantidad: 1, nota: undefined }],
+        },
+      },
+    }])
+  })
+
+  it('muestra en español el aviso de que ya pasó al taller', async () => {
+    const { repo } = falso({ data: null, error: { code: 'P0001', message: 'Este trabajo ya tiene piezas en el taller: ya no se puede editar desde Recepción.' } })
+    await expect(repo.editarTrabajo('t-1', { clienteId: 'c2', lineas: [{ producto: 'x', cantidad: 1 }] })).rejects.toThrow('ya tiene piezas en el taller')
+  })
+})

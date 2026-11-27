@@ -4,7 +4,9 @@ import type { Area, Asignacion, Cliente, EntregaParcial, Etapa, Linea, Modalidad
 import {
   ErrorCliente, planificarAsignaciones, planificarClientes, planificarProductos, RUT_DUPLICADO, validarAsignacion, validarClienteNuevo,
 } from '../dominio/maestros'
-import { ErrorTrabajo, MODALIDADES, validarTrabajoNuevo, type DatosTrabajoNuevo } from '../dominio/trabajo'
+import {
+  ErrorTrabajo, MODALIDADES, validarEdicionTrabajo, validarTrabajoNuevo, type DatosEdicionTrabajo, type DatosTrabajoNuevo,
+} from '../dominio/trabajo'
 import { ErrorEntrega, validarEntradaEntrega, validarTransporte } from '../dominio/entrega'
 import { ErrorVisita, fechaValida, validarVisita } from '../dominio/ruta'
 import { ErrorMovimiento, SOLO_GESTION_CORRIGE_ENTREGAS, validarCantidad } from '../dominio/avance'
@@ -91,10 +93,13 @@ export function filaATrabajo(f: FilaTrabajo): Trabajo {
   return t
 }
 
-const MENSAJES_PERMISO = ['Debes iniciar sesión para recibir trabajos.', 'No tienes permiso para recibir trabajos.']
+const MENSAJES_PERMISO = [
+  'Debes iniciar sesión para recibir trabajos.', 'No tienes permiso para recibir trabajos.',
+  'Debes iniciar sesión para editar trabajos.', 'No tienes permiso para editar trabajos.',
+]
 
 /**
- * Traduce un error de crear_trabajo. Las reglas de la base (P0001) y los dos avisos de permiso ya
+ * Traduce un error de crear_trabajo o editar_trabajo. Las reglas de la base (P0001) y los dos avisos de permiso ya
  * vienen en español; cualquier otro error (red, restricciones, mensajes en inglés) se reemplaza
  * por un mensaje genérico para no mostrar texto técnico.
  */
@@ -390,6 +395,23 @@ export function crearRepoConCliente(sb: SupabaseClient): Repo {
           lineas: datos.lineas.map((l) => ({ producto: l.producto, cantidad: l.cantidad, nota: l.nota })),
           // Reintento tras una respuesta perdida: con la misma clave la base devuelve el trabajo ya creado.
           clave,
+        },
+      })
+      if (error) throw errorDeTrabajo(error)
+      return filaATrabajo(data as FilaTrabajo)
+    },
+    async editarTrabajo(trabajoId: string, datos: DatosEdicionTrabajo) {
+      const errores = validarEdicionTrabajo(datos)
+      if (errores.length > 0) throw new ErrorTrabajo(errores[0])
+      // Una sola llamada: la base revisa que nada haya pasado al taller y cambia todo o nada.
+      const { data, error } = await sb.rpc('editar_trabajo', {
+        p_trabajo: trabajoId,
+        p_datos: {
+          cliente_id: datos.clienteId,
+          urgente: datos.urgente ?? false,
+          guia_retiro: datos.guiaRetiro,
+          notas: datos.notas,
+          lineas: datos.lineas.map((l) => ({ id: l.id, producto: l.producto, cantidad: l.cantidad, nota: l.nota })),
         },
       })
       if (error) throw errorDeTrabajo(error)
