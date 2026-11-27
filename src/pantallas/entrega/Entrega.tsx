@@ -168,6 +168,7 @@ export default function Entrega({
                         onChange={(e) => marcar(l, e.target.checked)}
                       />
                       <span className="font-semibold">{l.producto}</span>
+                      {l.nota && <span className="text-slate-700">{l.nota}</span>}
                       <span className="text-slate-600">({l.listas} {l.listas === 1 ? 'lista' : 'listas'})</span>
                     </label>
                     {marcada && (

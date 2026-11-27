@@ -69,6 +69,31 @@ describe('Recepcion', () => {
     await expect(repo.moverUnidades(lineas[0].id, 12, 'a1', 'a2')).resolves.toMatchObject({ cantidad: 12 })
   })
 
+  it('el detalle de cada línea (al lado de la cantidad) se guarda como nota de la línea', async () => {
+    const espiar = vi.fn()
+    const { lineas } = montar(secretaria, (r) => ({
+      ...r,
+      crearTrabajo: (d) => { espiar(d); return r.crearTrabajo(d) },
+    }))
+    await elegirCliente('imp', /Imprenta Sur/)
+    await userEvent.click(screen.getByText('Encuadernación'))
+    await userEvent.type(screen.getByLabelText('Producto línea 1'), 'Cuaderno')
+    await userEvent.type(screen.getByLabelText('Cantidad línea 1'), '50')
+    await userEvent.type(screen.getByLabelText('Detalle línea 1'), '  COMPOSICION SEK, Ø14 blanco ')
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar línea' }))
+    await userEvent.type(screen.getByLabelText('Producto línea 2'), 'Libro tapa dura')
+    await userEvent.type(screen.getByLabelText('Cantidad línea 2'), '2')
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar trabajo' }))
+
+    expect(await screen.findByText('Trabajo N.º 1 guardado')).toBeInTheDocument()
+    expect(espiar.mock.calls[0][0].lineas).toEqual([
+      { producto: 'Cuaderno', cantidad: 50, nota: 'COMPOSICION SEK, Ø14 blanco' },
+      { producto: 'Libro tapa dura', cantidad: 2 },
+    ])
+    expect(lineas[0].nota).toBe('COMPOSICION SEK, Ø14 blanco')
+    expect(lineas[1].nota).toBeUndefined()
+  })
+
   it('el cliente se busca por RUT (con o sin puntos) y por nombre sin tildes', async () => {
     montar()
     const caja = await screen.findByLabelText('Cliente')

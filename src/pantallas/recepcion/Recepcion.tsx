@@ -32,7 +32,12 @@ interface LineaForm {
   clave: number
   producto: string
   cantidad: string
+  /** Detalle de lo que es (se guarda en la nota de la línea), p. ej. «COMPOSICION SEK, Ø14 blanco». */
+  detalle: string
 }
+
+/** Largo máximo del detalle de una línea. */
+const DETALLE_MAXIMO = 200
 
 /** Opciones tipo botón grande (un radio nativo por opción: se maneja bien con el dedo y con lector de pantalla). */
 function Opciones<T extends string>({
@@ -92,7 +97,7 @@ export default function Recepcion({
   const [busqueda, setBusqueda] = useState('')
   const [area, setArea] = useState<Area>('afilado')
   const [entrada, setEntrada] = useState<Modalidad>(modalidadInicial)
-  const [lineas, setLineas] = useState<LineaForm[]>([{ clave: 1, producto: '', cantidad: '' }])
+  const [lineas, setLineas] = useState<LineaForm[]>([{ clave: 1, producto: '', cantidad: '', detalle: '' }])
   const [urgente, setUrgente] = useState(false)
   const [guia, setGuia] = useState('')
   const [notas, setNotas] = useState('')
@@ -128,7 +133,7 @@ export default function Recepcion({
     setBusqueda('')
     setArea('afilado')
     setEntrada(modalidadInicial)
-    setLineas([{ clave: siguienteClave.current++, producto: '', cantidad: '' }])
+    setLineas([{ clave: siguienteClave.current++, producto: '', cantidad: '', detalle: '' }])
     setUrgente(false)
     setGuia('')
     setNotas('')
@@ -142,7 +147,10 @@ export default function Recepcion({
       clienteId: cliente?.id ?? '',
       area,
       entrada,
-      lineas: lineas.map((l) => ({ producto: l.producto, cantidad: parsearCantidad(l.cantidad) })),
+      lineas: lineas.map((l) => {
+        const detalle = l.detalle.trim()
+        return { producto: l.producto, cantidad: parsearCantidad(l.cantidad), ...(detalle ? { nota: detalle } : {}) }
+      }),
     }
     if (urgente) datos.urgente = true
     if (guia.trim()) datos.guiaRetiro = guia.trim()
@@ -279,12 +287,12 @@ export default function Recepcion({
             ))}
           </datalist>
           {lineas.map((l, i) => (
-            <div key={l.clave} className="flex items-end gap-2">
+            <div key={l.clave} className="flex flex-wrap items-end gap-2">
               <input
                 aria-label={`Producto línea ${i + 1}`}
                 placeholder="Producto"
                 list="productos-sugeridos"
-                className={`${campoLinea} flex-1`}
+                className={`${campoLinea} min-w-[12rem] flex-[2]`}
                 value={l.producto}
                 onChange={(e) => actualizarLinea(l.clave, { producto: e.target.value })}
               />
@@ -295,6 +303,14 @@ export default function Recepcion({
                 className={`${campoLinea} w-24`}
                 value={l.cantidad}
                 onChange={(e) => actualizarLinea(l.clave, { cantidad: e.target.value })}
+              />
+              <input
+                aria-label={`Detalle línea ${i + 1}`}
+                placeholder="Detalle (ej. Ø14 blanco)"
+                maxLength={DETALLE_MAXIMO}
+                className={`${campoLinea} min-w-[10rem] flex-1`}
+                value={l.detalle}
+                onChange={(e) => actualizarLinea(l.clave, { detalle: e.target.value })}
               />
               {lineas.length > 1 && (
                 <button
@@ -311,7 +327,7 @@ export default function Recepcion({
           <button
             type="button"
             className={botonClaro}
-            onClick={() => setLineas((ls) => [...ls, { clave: siguienteClave.current++, producto: '', cantidad: '' }])}
+            onClick={() => setLineas((ls) => [...ls, { clave: siguienteClave.current++, producto: '', cantidad: '', detalle: '' }])}
           >
             Agregar línea
           </button>

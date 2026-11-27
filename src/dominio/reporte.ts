@@ -7,6 +7,8 @@ export interface FilaReporte {
   trabajoId: string
   trabajoNumero: number
   producto: string
+  /** Detalle anotado en recepción. */
+  nota?: string
   cantidad: number
   /** 'HH:mm' en hora de Santiago. */
   hora: string
@@ -126,6 +128,7 @@ export function reporteDiario(fecha: string, datos: DatosOperacion): ReporteDiar
       trabajoId: trabajo.id,
       trabajoNumero: trabajo.numero,
       producto: linea.producto,
+      ...(linea.nota ? { nota: linea.nota } : {}),
       cantidad,
       hora: horaSantiago(desde),
       dia: diaLocal(desde),
