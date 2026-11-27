@@ -27,6 +27,14 @@ function habil(dias: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+/** El día hábil siguiente a la fecha dada (YYYY-MM-DD). */
+function habilDespuesDe(fecha: string): string {
+  const d = new Date(`${fecha}T12:00:00Z`)
+  do d.setUTCDate(d.getUTCDate() + 1)
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6)
+  return d.toISOString().slice(0, 10)
+}
+
 function repo(rol: Rol | null = 'chofer', extra: { visitas?: Visita[] } = {}) {
   const trabajos = [trab('t1'), trab('t2', '100')]
   const lineas: Linea[] = [
@@ -212,7 +220,8 @@ describe('memoryRepo: visitas', () => {
     const vs = await r.listarVisitas(f)
     expect(vs).toHaveLength(1)
     expect(vs[0]).toMatchObject({ fecha: f, clienteId: 'c1', confirmada: 'si', solicitada: false, recorridoId: null })
-    expect(await r.listarVisitas(habil(3))).toEqual([])
+    // Otro día hábil, siempre distinto de f (habil(3) coincidía con habil(1) si hoy es viernes).
+    expect(await r.listarVisitas(habilDespuesDe(f))).toEqual([])
     expect(await r.listarVisitas('2026-11-28')).toEqual([]) // sábado: no hay visitas, pero no es un error
     await expect(r.listarVisitas('28-11-2026')).rejects.toThrow(new ErrorVisita('La fecha no es válida.'))
   })
