@@ -5,6 +5,7 @@ import type { UsuarioActual } from '../../dominio/tipos'
 import { trabajosEnRecepcion } from '../../dominio/trabajo'
 import Recepcion, { type EdicionTrabajo } from './Recepcion'
 import { COLOR_AREA } from '../colorArea'
+import { COLOR_FASE } from '../colorEtapa'
 
 const MAX_VISIBLES = 30
 const campo = 'min-h-12 w-full rounded border p-3 text-lg'
@@ -91,6 +92,7 @@ export default function EditarRecibidos({ repo, usuario }: { repo: Repo; usuario
                 <div className="min-w-0">
                   <p className="text-lg font-semibold">
                     N.º {t.numero} · {c?.nombre ?? 'Cliente desconocido'}
+                    <span className={`ml-2 ${COLOR_FASE.recibido.etiqueta}`}>Recibido</span>
                   </p>
                   <p className="text-sm text-slate-700">
                     {t.area === 'afilado' ? 'Afilado' : 'Encuadernación'} · {suyas.map((l) => `${l.cantidad} ${l.producto}`).join(', ')}

@@ -5,6 +5,7 @@ import { etiquetaHora, reporteDiario, type FilaReporte } from '../../dominio/rep
 import { useDatosEnVivo } from '../useDatosEnVivo'
 import { useFechaPorDefecto } from '../useFechaPorDefecto'
 import { fechaLarga } from '../ruta/comun'
+import { COLOR_FASE, type Fase } from '../colorEtapa'
 import { fechaHoraSantiago, planesPorTrabajo, resumenPlan, type PlanTrabajo } from '../../dominio/planificacion'
 
 const campo = 'min-h-12 rounded border bg-white p-3 text-lg'
@@ -13,15 +14,16 @@ const botonClaro = 'min-h-14 rounded border-2 border-slate-300 bg-white px-4 py-
 const unidades = (n: number) => `${n} ${n === 1 ? 'unidad' : 'unidades'}`
 const total = (filas: FilaReporte[]) => filas.reduce((s, f) => s + f.cantidad, 0)
 
-function Seccion({ titulo, vacio, filas, fecha, conDia, planes }: {
-  titulo: string; vacio: string; filas: FilaReporte[]; fecha: string; conDia: boolean; planes: Map<string, PlanTrabajo>
+function Seccion({ titulo, vacio, filas, fecha, conDia, planes, fase }: {
+  titulo: string; vacio: string; filas: FilaReporte[]; fecha: string; conDia: boolean; planes: Map<string, PlanTrabajo>; fase: Fase
 }) {
+  const color = COLOR_FASE[fase]
   const id = useId()
   const ahora = fechaHoraSantiago(new Date().toISOString())
   return (
     <section aria-labelledby={id} className="flex flex-col gap-2 print:break-inside-avoid">
-      <div className="flex items-baseline justify-between gap-2 border-b-2 border-slate-300 pb-1">
-        <h2 id={id} className="text-xl font-bold">{titulo}</h2>
+      <div className={`flex items-baseline justify-between gap-2 border-b-4 pb-1 ${color.borde}`}>
+        <h2 id={id} className={`text-xl font-bold ${color.texto} print:text-black`}>{titulo}</h2>
         <span className="text-slate-700">{filas.length === 0 ? 'Sin filas' : `${unidades(total(filas))} · ${filas.length} ${filas.length === 1 ? 'fila' : 'filas'}`}</span>
       </div>
       {filas.length === 0 ? (
@@ -29,7 +31,7 @@ function Seccion({ titulo, vacio, filas, fecha, conDia, planes }: {
       ) : (
         <ul className="flex flex-col gap-2 print:gap-0">
           {filas.map((f, i) => (
-            <li key={`${f.trabajoNumero}-${f.producto}-${i}`} className="flex items-start justify-between gap-3 rounded border-l-8 border-teal-600 bg-white p-3 shadow-sm print:rounded-none print:border-l-0 print:border-b print:shadow-none">
+            <li key={`${f.trabajoNumero}-${f.producto}-${i}`} className={`flex items-start justify-between gap-3 rounded border-l-8 ${color.borde} bg-white p-3 shadow-sm print:rounded-none print:border-l-0 print:border-b print:shadow-none`}>
               <div>
                 <p className="text-lg font-semibold">
                   <span>{f.clienteNombre}</span>
@@ -42,7 +44,7 @@ function Seccion({ titulo, vacio, filas, fecha, conDia, planes }: {
                   <p className="font-semibold text-amber-800 print:text-black">Entrega planificada: {resumenPlan(planes.get(f.trabajoId), ahora)}</p>
                 )}
               </div>
-              <span className="whitespace-nowrap text-lg font-bold text-teal-800 print:text-black">{conDia ? etiquetaHora(f.dia, fecha, f.hora) : f.hora}</span>
+              <span className={`whitespace-nowrap text-lg font-bold ${color.texto} print:text-black`}>{conDia ? etiquetaHora(f.dia, fecha, f.hora) : f.hora}</span>
             </li>
           ))}
         </ul>
@@ -88,10 +90,10 @@ export default function Reporte({ repo }: { repo: Repo }) {
               {reporte.sinClasificar} {reporte.sinClasificar === 1 ? 'línea sin clasificar' : 'líneas sin clasificar'}: tiene movimientos en etapas que no existen y no aparece en el reporte. Avisa al administrador.
             </p>
           )}
-          <Seccion titulo={esHoy ? 'Listo hoy' : 'Listo ese día'} vacio="Nadie quedó listo ese día." filas={reporte.listo} fecha={fecha} conDia={false} planes={planes} />
-          <Seccion titulo="En producción" vacio="No hay trabajos en producción." filas={reporte.enProduccion} fecha={fecha} conDia planes={planes} />
-          <Seccion titulo="Por entregar" vacio="No hay nada pendiente de entrega." filas={reporte.porEntregar} fecha={fecha} conDia planes={planes} />
-          <Seccion titulo="Recién recibido" vacio="No hay trabajos recién recibidos sin empezar." filas={reporte.recibido} fecha={fecha} conDia planes={planes} />
+          <Seccion titulo={esHoy ? 'Listo hoy' : 'Listo ese día'} vacio="Nadie quedó listo ese día." filas={reporte.listo} fecha={fecha} conDia={false} planes={planes} fase="listo" />
+          <Seccion titulo="En producción" vacio="No hay trabajos en producción." filas={reporte.enProduccion} fecha={fecha} conDia planes={planes} fase="taller" />
+          <Seccion titulo="Por entregar" vacio="No hay nada pendiente de entrega." filas={reporte.porEntregar} fecha={fecha} conDia planes={planes} fase="listo" />
+          <Seccion titulo="Recién recibido" vacio="No hay trabajos recién recibidos sin empezar." filas={reporte.recibido} fecha={fecha} conDia planes={planes} fase="recibido" />
         </>
       )}
     </div>

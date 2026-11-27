@@ -10,6 +10,7 @@ import { useDatosEnVivo } from '../useDatosEnVivo'
 import Entrega from '../entrega/Entrega'
 import { DetalleLinea, PlanEntrega } from './DetalleTaller'
 import { COLOR_AREA } from '../colorArea'
+import { COLOR_FASE, NOMBRE_FASE, colorEtapa, type Fase } from '../colorEtapa'
 
 const AREAS: Record<Area, string> = { afilado: 'Afilado', encuadernacion: 'Encuadernación' }
 const ERROR_GENERICO = 'No se pudo mover las unidades. Revisa tu conexión e inténtalo de nuevo.'
@@ -34,11 +35,13 @@ function disponibles(l: LineaTaller, origenId: string): number {
   return l.distribucion.find((d) => d.etapa.id === origenId)?.unidades ?? 0
 }
 
-function Opcion({ nombre, texto, marcada, alElegir }: { nombre: string; texto: string; marcada: boolean; alElegir: () => void }) {
+function Opcion({ nombre, texto, marcada, alElegir, color }: {
+  nombre: string; texto: string; marcada: boolean; alElegir: () => void; color: { opcion: string; elegido: string }
+}) {
   return (
     <label
-      className={`flex min-h-14 cursor-pointer items-center justify-center rounded border-2 px-4 py-2 text-center text-lg ${
-        marcada ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-300 bg-white'
+      className={`flex min-h-14 cursor-pointer items-center justify-center rounded border-2 px-4 py-2 text-center text-lg font-semibold ${
+        marcada ? color.elegido : color.opcion
       }`}
     >
       <input type="radio" name={nombre} className="sr-only" checked={marcada} onChange={alElegir} />
@@ -223,6 +226,12 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
         </div>
       )}
 
+      <p className="flex flex-wrap gap-2 text-sm" aria-label="Colores por etapa">
+        {(Object.keys(NOMBRE_FASE) as Fase[]).map((f) => (
+          <span key={f} className={COLOR_FASE[f].etiqueta}>{NOMBRE_FASE[f]}</span>
+        ))}
+      </p>
+
       {confirmacion && (
         <p role="status" className="rounded bg-teal-50 p-4 text-xl font-bold text-teal-800">{confirmacion}</p>
       )}
@@ -259,7 +268,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                 {l.urgente && <span className="text-sm font-bold text-red-700">URGENTE</span>}
                 <span className="flex flex-wrap gap-2">
                   {l.distribucion.map((d) => (
-                    <span key={d.etapa.id} className="rounded bg-slate-100 px-2 py-1 text-base">
+                    <span key={d.etapa.id} className={colorEtapa(d.etapa).etiqueta}>
                       {d.etapa.nombre} {d.unidades}
                     </span>
                   ))}
@@ -278,6 +287,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                             nombre={`desde-${l.lineaId}`}
                             texto={`${d.etapa.nombre} (${d.unidades})`}
                             marcada={sel.origenId === d.etapa.id}
+                            color={colorEtapa(d.etapa)}
                             alElegir={() => cambiarOrigen(l, d.etapa.id)}
                           />
                         ))}
@@ -294,6 +304,7 @@ export default function Taller({ repo, usuario, area }: { repo: Repo; usuario: U
                           nombre={`destino-${l.lineaId}`}
                           texto={e.nombre}
                           marcada={sel.destinoId === e.id}
+                          color={colorEtapa(e)}
                           alElegir={() => setSel({ ...sel, destinoId: e.id })}
                         />
                       ))}

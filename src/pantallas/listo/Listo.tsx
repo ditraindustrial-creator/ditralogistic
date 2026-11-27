@@ -169,7 +169,7 @@ export default function Listo({ repo }: { repo: Repo }) {
                     <span className="text-lg font-semibold">{f.clienteNombre}</span>
                     <span className="text-sm text-slate-600">Trabajo N.º {f.numero} · <span className={COLOR_AREA[f.area].etiqueta}>{AREAS[f.area]}</span></span>
                   </div>
-                  <p className={`text-xl font-bold ${f.listas > 0 ? 'text-teal-800' : 'text-slate-600'}`}>
+                  <p className={`text-xl font-bold ${f.listas > 0 ? 'text-green-800' : 'text-slate-600'}`}>
                     {f.listas} de {f.pendientes} listas
                   </p>
                   {f.rutas.length > 0 && <p className="text-sm text-slate-600">{textoRutas(f)}</p>}
@@ -180,7 +180,7 @@ export default function Listo({ repo }: { repo: Repo }) {
                     {f.listoDesde ? `${completo ? 'Todo listo' : 'Listo'} desde ${desdeCuando(f.listoDesde)}` : 'Aún no hay unidades listas'}
                   </p>
                   {f.entregadas > 0 && (
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm font-semibold text-fuchsia-800">
                       {f.entregadas} {f.entregadas === 1 ? 'entregada' : 'entregadas'} · {f.total} en el pedido
                     </p>
                   )}
